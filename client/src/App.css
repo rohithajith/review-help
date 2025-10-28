@@ -6,7 +6,7 @@
 
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 20px;
   margin: 20px 0;
 }
@@ -34,8 +34,25 @@
 
 .template-actions {
   display: flex;
+  flex-direction: row;
   gap: 10px;
   justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .template-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-actions button {
+    width: 100%;
+    margin-bottom: 8px;
+  }
 }
 
 .App-header {
@@ -79,17 +96,156 @@
   padding: 15px 20px;
 }
 
+/* Navbar and Footer responsive adjustments */
+.navbar {
+  transition: padding 0.3s ease;
+}
+
+.navbar-brand {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.navbar-toggler {
+  border: none;
+}
+
+.navbar-toggler-icon {
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba%28255, 255, 255, 0.5%29' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
+}
+
+.navbar-nav .nav-link {
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+}
+
+footer {
+  background: #f8f9fa;
+  padding: 1rem 0;
+  font-size: 0.9rem;
+  color: #777;
+}
+
+footer a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* Template Card responsive styles */
+.template-card {
+  margin-bottom: 1.5rem;
+}
+
+.template-card .card-body {
+  padding: 1.25rem;
+}
+
+.template-card .template-text {
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.template-card .template-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .template-grid {
     grid-template-columns: 1fr;
   }
-  
+
+  .navbar {
+    padding: 0.5rem 1rem;
+  }
+
+  footer {
+    padding: 1rem 0;
+    font-size: 0.85rem;
+  }
+
   .App-header {
     padding: 20px;
   }
-  
+
   .App-header h1 {
     font-size: 1.8rem;
   }
+
+  .template-card {
+    padding: 12px;
+  }
+
+  .template-text {
+    font-size: 0.9rem;
+  }
+
+  .template-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-actions button {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+}
+
+/* Tablet adjustments */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .template-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+  }
+
+  .navbar {
+    padding: 0.75rem 1.5rem;
+  }
+
+  .template-card {
+    padding: 14px;
+  }
+
+  .template-text {
+    font-size: 0.95rem;
+  }
+
+/* Mobile landscape adjustments */
+@media (max-width: 576px) {
+  .template-grid {
+    gap: 10px;
+  }
+
+  .navbar {
+    padding: 0.5rem 1rem;
+  }
+
+  footer {
+    padding: 0.75rem 0;
+    font-size: 0.75rem;
+  }
+
+  .template-card {
+    padding: 10px;
+  }
+
+  .template-text {
+    font-size: 0.85rem;
+  }
+
+  .App-header {
+    padding: 15px;
+  }
+
+  .App-header h1 {
+    font-size: 1.5rem;
+  }
+}
 }

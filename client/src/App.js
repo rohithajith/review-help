@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import useTemplates from './hooks/useTemplates';
 import Footer from './components/Footer';
 import AppNavbar from './components/Navbar';
 import { Container } from 'react-bootstrap';
@@ -7,38 +8,17 @@ import EditModal from './components/EditModal';
 import './App.css';
 
 function App() {
-  const [templates, setTemplates] = useState([]);
+  const { templates, loading, error, refresh } = useTemplates();
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL}/templates`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch templates');
-        }
-        const data = await response.json();
-        console.log("Fetched templates:", data); // Add this line
-        setTemplates(data);
-      } catch (err) {
-        setError(err.message);
-        console.error('Error fetching templates:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTemplates();
-  }, []);
+  // useTemplates hook handles fetching and state
 
   const handleEdit = (template) => {
     setEditingTemplate(template);
   };
 
   const handleSave = (updatedTemplate) => {
-    setTemplates(templates.map(t => t.id === updatedTemplate.id ? updatedTemplate : t));
+    // Update local state via hook if needed
     setEditingTemplate(null);
   };
 
