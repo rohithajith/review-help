@@ -2,7 +2,7 @@ const db = require('../db');
 
 // Get all active templates
 exports.getActiveTemplates = (req, res) => {
-  const sql = 'SELECT * FROM templates WHERE used = 0';
+  const sql = 'SELECT * FROM review_templates WHERE used = 0';
   db.all(sql, [], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -34,7 +34,7 @@ exports.markTemplateAsUsed = (req, res) => {
 
 // Get all used templates (admin feature)
 exports.getUsedTemplates = (req, res) => {
-  const sql = 'SELECT * FROM templates WHERE used = 1';
+  const sql = 'SELECT * FROM review_templates WHERE used = 1';
   db.all(sql, [], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -49,7 +49,7 @@ exports.rephraseTemplate = (req, res) => {
   if (!text) {
     return res.status(400).json({ message: 'Text is required' });
   }
-  const sqlInsert = 'INSERT INTO templates (text, used) VALUES (?, 0)';
+  const sqlInsert = 'INSERT INTO review_templates (text, used) VALUES (?, 0)';
   db.run(sqlInsert, [text], function(err) {
     if (err) {
       return res.status(500).json({ error: err.message });

@@ -1,11 +1,10 @@
 // import 'bootstrap/dist/css/bootstrap.min.css';
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const templatesRoutes = require('./routes/templatesRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5002;
 
 // Middleware
 app.use(cors());

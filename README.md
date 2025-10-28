@@ -12,13 +12,13 @@ This is a full-stack web application that allows users to scan a QR code to land
 ## Technologies Used
 - **Frontend**: React
 - **Backend**: Node.js/Express
-- **Database**: MongoDB
+- **Database**: SQLite
 
 ## Setup Instructions
 
 ### Prerequisites
 - Node.js and npm installed on your machine.
-- MongoDB installed and running locally or a MongoDB Atlas account.
+- SQLite3 installed and the database file (reviewapp.db) will be created automatically.
 
 ### Backend Setup
 1. Navigate to the backend directory:
@@ -29,56 +29,35 @@ This is a full-stack web application that allows users to scan a QR code to land
    ```sh
    npm install
    ```
-3. Create a `.env` file in the backend directory with the following environment variables:
-   ```sh
-   MONGODB_URI=your_mongodb_connection_string
-   PORT=3001
-   ```
-4. Start the backend server:
+3. Start the backend server (no .env needed for DB connection):
    ```sh
    npm run dev
    ```
 
-### Frontend Setup
-1. Navigate to the frontend directory:
-   ```sh
-   cd review-app/client
-   ```
-2. Install dependencies:
-   ```sh
-   npm install
-   ```
-3. Create a `.env` file in the frontend directory with the following environment variables:
-   ```sh
-   REACT_APP_API_URL=http://localhost:3001/api
-   ```
-4. Start the frontend development server:
-   ```sh
-   npm start
-   ```
-
 ## Customizing Templates
-- **Adding New Templates**: Add new templates by inserting documents into the `ReviewTemplate` collection in MongoDB.
-- **Editing Templates**: Edit existing templates directly in the MongoDB database.
+- **Adding New Templates**: Add new templates by inserting rows into the `review_templates` table in SQLite.
+- **Editing Templates**: Edit existing templates directly in the SQLite database.
 - **Admin Features**: Use the admin features in the application to list used templates and rephrase/return them to the active pool.
 
-## Example MongoDB Schemas
+## Example SQLite Schemas
 
-### ReviewTemplate Collection
-```json
-{
-  "text": "Great service and friendly staff!",
-  "used": false,
-  "createdAt": "2025-10-27T14:55:59.058Z"
-}
+### review_templates table
+```sql
+CREATE TABLE review_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-### ArchivedTemplate Collection
-```json
-{
-  "text": "Great service and friendly staff!",
-  "archivedAt": "2025-10-27T14:55:59.058Z"
-}
+### archived_templates table
+```sql
+CREATE TABLE archived_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ## Contributing
