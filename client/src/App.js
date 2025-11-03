@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import useTemplates from './hooks/useTemplates';
 import Footer from './components/Footer';
 import AppNavbar from './components/Navbar';
 import { Container } from 'react-bootstrap';
 import TemplateList from './components/TemplateList';
 import EditModal from './components/EditModal';
+import AdminDashboard from './components/AdminDashboard';
 import './App.css';
 
 function App() {
-  const { templates, loading, error, refresh } = useTemplates();
+  const { templates, loading, error } = useTemplates();
   const [editingTemplate, setEditingTemplate] = useState(null);
 
   // useTemplates hook handles fetching and state
@@ -36,29 +38,38 @@ function App() {
   }
 
   return (
-    <div className="App">
-      <AppNavbar />
-      <Container>
-        <header className="App-header">
-          <h1>Review Templates</h1>
-          <div className="template-list">
-            <TemplateList
-              templates={templates}
-              onEdit={handleEdit}
-              onCopyAndLeaveReview={handleCopyAndLeaveReview}
-            />
-          </div>
-          {editingTemplate && (
-            <EditModal
-              template={editingTemplate}
-              onClose={() => setEditingTemplate(null)}
-              onSave={handleSave}
-            />
-          )}
-        </header>
-  <Footer />
-      </Container>
-    </div>
+    <Router>
+      <div className="App">
+        <AppNavbar />
+        <Container>
+          <header className="App-header">
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <h1>Review Templates</h1>
+            </div>
+            <Routes>
+              <Route path="/" exact element={
+                <div className="template-list">
+                  <TemplateList
+                    templates={templates}
+                    onEdit={handleEdit}
+                    onCopyAndLeaveReview={handleCopyAndLeaveReview}
+                  />
+                  {editingTemplate && (
+                    <EditModal
+                      template={editingTemplate}
+                      onClose={() => setEditingTemplate(null)}
+                      onSave={handleSave}
+                    />
+                  )}
+                </div>
+              } />
+              <Route path="/admin" element={<AdminDashboard />} />
+            </Routes>
+          </header>
+          <Footer />
+        </Container>
+      </div>
+    </Router>
   );
 }
 
