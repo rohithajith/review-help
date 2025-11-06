@@ -15,35 +15,65 @@ const templates = [
 
 function seed() {
   db.serialize(() => {
-    // Ensure table exists (db.js already creates the table, but double-check)
-    db.run(`CREATE TABLE IF NOT EXISTS review_templates (
+    // Ensure a default business exists and seed templates for it
+    db.run(`CREATE TABLE IF NOT EXISTS businesses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      text TEXT NOT NULL,
-      used INTEGER DEFAULT 0,
+      name TEXT NOT NULL,
+      google_review_url TEXT,
+      logo_url TEXT,
+      welcome_message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );`);
 
-    db.get('SELECT COUNT(*) as count FROM review_templates', [], (err, row) => {
+    db.get('SELECT id FROM businesses LIMIT 1', [], (err, bizRow) => {
       if (err) {
         console.error('Error counting templates:', err.message);
         process.exit(1);
       }
+      if (bizRow && bizRow.id) {
+        const businessId = bizRow.id;
+        db.get('SELECT COUNT(*) as count FROM review_templates WHERE business_id = ?', [businessId], (err2, row2) => {
+          if (err2) {
+            console.error('Error counting templates:', err2.message);
+            process.exit(1);
+          }
+          if (row2 && row2.count > 0) {
+            console.log(`DB already has ${row2.count} templates — skipping seed.`);
+            process.exit(0);
+          }
 
-      if (row && row.count > 0) {
-        console.log(`DB already has ${row.count} templates — skipping seed.`);
-        process.exit(0);
+          const insert = db.prepare('INSERT INTO review_templates (business_id, text, used) VALUES (?, ?, 0)');
+          templates.forEach((t) => insert.run(businessId, t));
+          insert.finalize((err3) => {
+            if (err3) {
+              console.error('Error finalizing insert:', err3.message);
+              process.exit(1);
+            }
+            console.log(`Seeded ${templates.length} restaurant templates into review_templates for business ${businessId}.`);
+            process.exit(0);
+          });
+        });
+      } else {
+        // Create a default business and then seed
+        db.run('INSERT INTO businesses (name, google_review_url, logo_url, welcome_message) VALUES (?, ?, ?, ?)',
+          ['Default Business', null, null, 'Welcome!'], function (bizErr) {
+            if (bizErr) {
+              console.error('Error creating default business', bizErr.message);
+              process.exit(1);
+            }
+            const businessId = this.lastID;
+            const insert = db.prepare('INSERT INTO review_templates (business_id, text, used) VALUES (?, ?, 0)');
+            templates.forEach((t) => insert.run(businessId, t));
+            insert.finalize((err4) => {
+              if (err4) {
+                console.error('Error finalizing insert:', err4.message);
+                process.exit(1);
+              }
+              console.log(`Created default business ${businessId} and seeded ${templates.length} templates.`);
+              process.exit(0);
+            });
+        });
       }
-
-      const insert = db.prepare('INSERT INTO review_templates (text, used) VALUES (?, 0)');
-      templates.forEach((t) => insert.run(t));
-      insert.finalize((err) => {
-        if (err) {
-          console.error('Error finalizing insert:', err.message);
-          process.exit(1);
-        }
-        console.log(`Seeded ${templates.length} restaurant templates into review_templates.`);
-        process.exit(0);
-      });
     });
   });
 }

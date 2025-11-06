@@ -6,11 +6,11 @@ class ArchivedTemplate {
     this.archivedAt = archivedAt || new Date();
   }
 
-  static async create(text) {
+  static async createForBusiness(businessId, text) {
     return new Promise((resolve, reject) => {
       db.run(
-        'INSERT INTO archived_templates (text, archived_at) VALUES (?, ?)',
-        [text, new Date()],
+        'INSERT INTO archived_templates (business_id, text, archived_at) VALUES (?, ?, ?)',
+        [businessId, text, new Date()],
         function (err) {
           if (err) {
             return reject(err);
@@ -21,9 +21,9 @@ class ArchivedTemplate {
     });
   }
 
-  static async findAll() {
+  static async findAllForBusiness(businessId) {
     return new Promise((resolve, reject) => {
-      db.all('SELECT * FROM archived_templates', [], (err, rows) => {
+      db.all('SELECT * FROM archived_templates WHERE business_id = ?', [businessId], (err, rows) => {
         if (err) {
           return reject(err);
         }

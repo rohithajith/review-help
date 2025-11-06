@@ -1,29 +1,37 @@
 const express = require('express');
-const router = express.Router();
+const { body, param } = require('express-validator');
+const router = express.Router({ mergeParams: true });
 const templatesController = require('../controllers/templatesController');
+const businessController = require('../controllers/businessController');
 
- // Get all active templates
- router.get('/templates', templatesController.getActiveTemplates);
+// Get all active templates
+router.get('/templates', templatesController.getActiveTemplates);
 
- // Mark a template as used
- router.post('/templates/:id/use', templatesController.markTemplateAsUsed);
+// Get business details for the current tenant
+router.get('/business', businessController.getBusiness);
 
- // Get all used templates (admin feature)
- router.get('/templates/used', templatesController.getUsedTemplates);
+// Note: this router is mounted under /api/:businessId so templatesController
+// uses req.db (attached by businessMiddleware) to talk to that tenant's DB.
 
- // Rephrase and return a used template to the active pool (admin feature)
- router.post('/templates/:id/rephrase', templatesController.rephraseTemplate);
+// Mark a template as used
+router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], templatesController.markTemplateAsUsed);
 
- // Create a new template (admin feature)
- router.post('/templates', templatesController.createTemplate);
+// Get all used templates (admin feature)
+router.get('/templates/used', templatesController.getUsedTemplates);
 
- // Update an existing template (admin feature)
- router.put('/templates/:id', templatesController.updateTemplate);
+// Rephrase and return a used template to the active pool (admin feature)
+router.post('/templates/:id/rephrase', [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], templatesController.rephraseTemplate);
 
- // Delete a template (admin feature)
- router.delete('/templates/:id', templatesController.deleteTemplate);
+// Create a new template (admin feature)
+router.post('/templates', [body('text').isString().trim().isLength({ min: 1 })], templatesController.createTemplate);
 
- // Bulk delete templates (admin feature)
- router.delete('/templates/bulk', templatesController.bulkDeleteTemplates);
+// Update an existing template (admin feature)
+router.put('/templates/:id', [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], templatesController.updateTemplate);
 
- module.exports = router;
+// Delete a template (admin feature)
+router.delete('/templates/:id', [param('id').isInt({ gt: 0 })], templatesController.deleteTemplate);
+
+// Bulk delete templates (admin feature)
+router.delete('/templates/bulk', [body('ids').isArray({ min: 1 })], templatesController.bulkDeleteTemplates);
+
+module.exports = router;

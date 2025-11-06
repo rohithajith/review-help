@@ -1,0 +1,38 @@
+// Example Prisma schema snippet for multi-tenant changes (SQLite datasource)
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Business {
+  id              Int      @id @default(autoincrement())
+  name            String
+  google_review_url String?
+  logo_url        String?
+  welcome_message String?
+  created_at      DateTime @default(now())
+  review_templates ReviewTemplate[]
+  archived_templates ArchivedTemplate[]
+}
+
+model ReviewTemplate {
+  id         Int      @id @default(autoincrement())
+  business   Business @relation(fields: [businessId], references: [id])
+  businessId Int
+  text       String
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+model ArchivedTemplate {
+  id         Int      @id @default(autoincrement())
+  business   Business @relation(fields: [businessId], references: [id])
+  businessId Int
+  text       String
+  archived_at DateTime @default(now())
+}
