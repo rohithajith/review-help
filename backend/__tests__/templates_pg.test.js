@@ -32,8 +32,10 @@ describe('Postgres tenant integration', () => {
     process.env.TENANT_DB_URL_2 = TENANT2;
 
     // wait script may be used in CI to ensure Postgres is ready externally
-    // run seedTenants to create tables and register tenants
-    await exec('node backend/seedTenants.js');
+    // run seedTenants to create tables and register tenants (resolve path from this test file)
+    const path = require('path');
+    const seedPath = path.join(__dirname, '..', 'seedTenants.js');
+    await exec(`node ${seedPath}`);
 
     // require app after env and seeding
     app = require('../index');

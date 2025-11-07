@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import useTemplates from './hooks/useTemplates';
 import Footer from './components/Footer';
@@ -10,7 +11,34 @@ import AdminDashboard from './components/AdminDashboard';
 import './App.css';
 
 function App() {
-  const { templates, loading, error } = useTemplates();
+  const settings = JSON.parse(localStorage.getItem('settings')) || {};
+  const [selectedBusinessId, setSelectedBusinessId] = useState(settings.businessId || null);
+  const { templates, loading, error } = useTemplates(selectedBusinessId);
+
+  // On app load, if no businessId is configured, attempt to pick the first
+  // business returned by the API and persist it. This ensures the root page can
+  // show templates without visiting the Admin dashboard first.
+  useEffect(() => {
+    const initBusiness = async () => {
+      if (selectedBusinessId) return;
+      try {
+        const apiBase = process.env.REACT_APP_API_URL || '';
+        const res = await axios.get(`${apiBase}/businesses`);
+        const list = res.data || [];
+        if (list.length > 0) {
+          const firstId = list[0].id;
+          setSelectedBusinessId(firstId);
+          const s = JSON.parse(localStorage.getItem('settings')) || {};
+          s.businessId = firstId;
+          localStorage.setItem('settings', JSON.stringify(s));
+        }
+      } catch (err) {
+        // don't block rendering; error will be visible in templates hook if any
+        // console.warn('Could not auto-select business', err);
+      }
+    };
+    initBusiness();
+  }, [selectedBusinessId]);
   const [editingTemplate, setEditingTemplate] = useState(null);
 
   // useTemplates hook handles fetching and state
@@ -26,7 +54,10 @@ function App() {
 
   const handleCopyAndLeaveReview = (template) => {
     navigator.clipboard.writeText(template.text);
-    window.open(`https://www.google.com/maps/place/${template.businessId}/reviews`, '_blank');
+    // prefer configured google review url
+    const settings = JSON.parse(localStorage.getItem('settings')) || {};
+    const url = settings.googleReviewUrl || template.google_review_url || `https://www.google.com/search?q=${encodeURIComponent(settings.businessName || '')}+reviews`;
+    if (url) window.open(url, '_blank');
   };
 
   if (loading) {

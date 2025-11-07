@@ -13,6 +13,17 @@ const PORT = process.env.PORT || 5002;
 app.use(cors());
 app.use(express.json());
 
+// Simple request logger that includes businessId when present
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const businessId = req.businessId || (req.params && req.params.businessId) || '-';
+    console.log(`[${new Date().toISOString()}] ${req.ip} ${req.method} ${req.originalUrl} businessId=${businessId} status=${res.statusCode} ${duration}ms`);
+  });
+  next();
+});
+
 // Basic rate limiting for APIs
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -42,6 +53,14 @@ app.use('/api/:businessId', businessMiddleware, templatesRoutes);
 
 app.get('/', (req, res) => {
   res.send('Review App Backend');
+});
+
+// Centralized error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err && err.stack ? err.stack : err);
+  // don't leak internal error details in production -- show message and code
+  const status = err && err.status ? err.status : 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
 // Start the server only if not required by tests

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, testing ]
+  pull_request:
+    branches: [ main, testing ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install backend deps
+        working-directory: ./backend
+        run: npm ci
+      - name: Start docker-compose Postgres
+        run: |
+          docker-compose up -d
+          # wait until Postgres accepts connections
+          node backend/waitForPostgres.js
+      - name: Set backend envs for tests
+        run: |
+          echo "ADMIN_DATABASE_URL=postgres://appuser:password@localhost:5432/admin_db" >> $GITHUB_ENV
+          echo "TENANT_DB_URL_1=postgres://appuser:password@localhost:5432/tenant1_db" >> $GITHUB_ENV
+          echo "TENANT_DB_URL_2=postgres://appuser:password@localhost:5432/tenant2_db" >> $GITHUB_ENV
+      - name: Seed tenant DBs
+        working-directory: ./backend
+        run: node seedTenants.js
+      - name: Run backend tests
+        working-directory: ./backend
+        run: npm test -- --runInBand
+      - name: Tear down docker-compose
+        run: docker-compose down -v
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install frontend deps
+        working-directory: ./client
+        run: npm ci
+      - name: Run frontend tests
+        working-directory: ./client
+        run: npm test -- --watchAll=false

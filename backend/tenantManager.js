@@ -37,4 +37,117 @@ function getTenantPool(businessId) {
   return pool;
 }
 
-module.exports = { getTenantPool, getAdminPool };
+/**
+ * Create or ensure a tenant database exists and return a connected pool.
+ * Attempts to connect to the provided tenant connection string. If the
+ * database does not exist, it will connect to the server's default
+ * database (usually 'postgres') and run CREATE DATABASE <name>.
+ * After the DB exists it will run per-tenant migrations and seed defaults.
+ * Returns the pooled client for the tenant.
+ */
+async function createTenantDatabase(connectionString, aliasKey) {
+  // Try to connect directly first
+  let tenantPool;
+  try {
+    tenantPool = new Pool({ connectionString });
+    // quick test
+    await tenantPool.query('SELECT 1');
+    // run migrations and seed
+    await runTenantMigrations(tenantPool);
+    await seedDefaultTemplates(tenantPool);
+    // cache and return
+    const url = new URL(connectionString);
+    const dbName = url.pathname ? url.pathname.replace(/^\//, '') : '';
+    const key = `tenant:${dbName || connectionString}`;
+    poolCache.set(key, tenantPool);
+    if (aliasKey) {
+      poolCache.set(`tenant:${aliasKey}`, tenantPool);
+    }
+    return tenantPool;
+  } catch (err) {
+    // If connection failed because DB does not exist, attempt to create it
+    // Postgres error code for invalid_catalog_name is 3D000; however, connection
+    // errors may vary. We'll attempt a create using admin connection derived
+    // from the connection string by connecting to the default 'postgres' DB.
+    try {
+      if (tenantPool) {
+        await tenantPool.end().catch(() => {});
+      }
+    } catch (e) {}
+
+    // parse components from connectionString
+    let parsed;
+    try {
+      parsed = new URL(connectionString);
+    } catch (e) {
+      throw new Error('Invalid tenant connection string');
+    }
+
+    const dbName = parsed.pathname ? parsed.pathname.replace(/^\//, '') : null;
+    if (!dbName) throw err; // nothing we can do
+
+    // Build admin-level connection string to 'postgres' database on same host
+    const adminUrl = new URL(connectionString);
+    adminUrl.pathname = '/postgres';
+    const adminConn = adminUrl.toString();
+
+    const adminPool = new Pool({ connectionString: adminConn });
+    try {
+      // create database
+      await adminPool.query(`CREATE DATABASE "${dbName}"`);
+    } catch (createErr) {
+      // if it already exists or other error, rethrow original error
+      await adminPool.end().catch(() => {});
+      throw createErr;
+    }
+    await adminPool.end().catch(() => {});
+
+    // now try to connect again
+    tenantPool = new Pool({ connectionString });
+    await tenantPool.query('SELECT 1');
+    await runTenantMigrations(tenantPool);
+    await seedDefaultTemplates(tenantPool);
+
+    const key = `tenant:${dbName}`;
+    poolCache.set(key, tenantPool);
+    if (aliasKey) {
+      poolCache.set(`tenant:${aliasKey}`, tenantPool);
+    }
+    return tenantPool;
+  }
+}
+
+async function runTenantMigrations(pool) {
+  // Minimal migrations: ensure review_templates and archived_templates exist
+  const createTemplates = `
+    CREATE TABLE IF NOT EXISTS review_templates (
+      id SERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      used BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `;
+  const createArchived = `
+    CREATE TABLE IF NOT EXISTS archived_templates (
+      id SERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      archived_at TIMESTAMP DEFAULT NOW()
+    );
+  `;
+  await pool.query(createTemplates);
+  await pool.query(createArchived);
+}
+
+async function seedDefaultTemplates(pool) {
+  try {
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS cnt FROM review_templates');
+    const count = rows && rows[0] ? rows[0].cnt : 0;
+    if (count === 0) {
+      await pool.query("INSERT INTO review_templates (text, used, created_at) VALUES ($1, false, NOW())", ['Thanks for visiting! Please leave us a review.']);
+    }
+  } catch (e) {
+    // ignore seeding errors
+  }
+}
+
+module.exports = { getTenantPool, getAdminPool, createTenantDatabase };

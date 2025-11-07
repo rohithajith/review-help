@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: admin_db
+    ports:
+      # Map container 5432 to host 5433 to avoid conflicting with a host Postgres
+      - '5433:5432'
+    volumes:
+      - ./backend/docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d admin_db -h localhost -p 5432"]
+      interval: 5s
+      retries: 10

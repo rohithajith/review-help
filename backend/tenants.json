@@ -1,6 +1,6 @@
 {
   "admin": {
-    "connectionString": "postgres://admin:password@localhost:5432/admin_db"
+    "connectionString": "postgres://appuser:password@localhost:5432/admin_db"
   },
   "tenants": {
     "1": { "name": "Joe's Restaurant", "connectionString": "postgres://appuser:password@localhost:5432/tenant1_db", "google_review_url": "", "logo_url": "", "welcome_message": "Welcome to Joe's Restaurant" },

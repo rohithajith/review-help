@@ -14,6 +14,19 @@ BACKEND_LOG="/tmp/review-backend.log"
 CLIENT_LOG="/tmp/review-client.log"
 BACKEND_PID_FILE="/tmp/review-backend.pid"
 CLIENT_PID_FILE="/tmp/review-client.pid"
+DOCKER_COMPOSE_FILE="$ROOT/docker-compose.yml"
+DC_CMD=""
+POSTGRES_HOST=localhost
+POSTGRES_PORT=${POSTGRES_PORT:-5433}
+POSTGRES_USER=${POSTGRES_USER:-appuser}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+POSTGRES_DB=${POSTGRES_DB:-admin_db}
+# allow overriding via env; default maps to host:5433 to avoid local Postgres conflicts
+ADMIN_DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB"
+# Client API base used by the React app (create-react-app reads REACT_APP_* at compile time)
+# Default to backend API path; can be overridden by setting REACT_APP_API_URL in the environment
+REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:5002/api}
+
 
 ensure_deps() {
   dir=$1
@@ -23,6 +36,53 @@ ensure_deps() {
   else
     echo "Deps already installed in $dir (skipping)"
   fi
+}
+
+start_docker() {
+  # prefer docker-compose (legacy) but support `docker compose`
+  if command -v docker-compose >/dev/null 2>&1; then
+    DC_CMD="docker-compose"
+  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DC_CMD="docker compose"
+  else
+    echo "docker-compose or docker compose is required to start Postgres. Skipping docker startup."
+    return 1
+  fi
+
+  if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
+    echo "No docker-compose.yml found at $DOCKER_COMPOSE_FILE; skipping docker start"
+    return 1
+  fi
+
+  echo "Starting docker services (via $DC_CMD) -> docker logs available via $DC_CMD logs"
+  $DC_CMD -f "$DOCKER_COMPOSE_FILE" up -d
+
+  # wait for postgres health: check docker-compose ps output for "healthy" or fallback to port check
+  echo "Waiting for Postgres to become healthy on $POSTGRES_HOST:$POSTGRES_PORT ..."
+  for i in $(seq 1 60); do
+    # try docker compose ps healthy indicator
+    if $DC_CMD -f "$DOCKER_COMPOSE_FILE" ps | grep -i postgres >/dev/null 2>&1; then
+      if $DC_CMD -f "$DOCKER_COMPOSE_FILE" ps | grep -i postgres | grep -i healthy >/dev/null 2>&1; then
+        echo "Postgres container is healthy"
+        break
+      fi
+    fi
+
+    # fallback: check port
+    if nc -z "$POSTGRES_HOST" "$POSTGRES_PORT" >/dev/null 2>&1; then
+      echo "Postgres TCP port $POSTGRES_PORT is open"
+      break
+    fi
+
+    sleep 1
+    if [ $i -eq 60 ]; then
+      echo "Timeout waiting for Postgres to become ready"
+      return 2
+    fi
+  done
+
+  echo "Postgres ready"
+  return 0
 }
 
 is_listening() {
@@ -50,11 +110,19 @@ echo "Root: $ROOT"
 echo "\n=== Backend setup ==="
 ensure_deps "$BACKEND"
 
+# Start docker/postgres (if docker present)
+if start_docker; then
+  echo "Exporting ADMIN_DATABASE_URL for backend: $ADMIN_DATABASE_URL"
+  export ADMIN_DATABASE_URL
+else
+  echo "Docker/Postgres startup skipped or failed; ensure ADMIN_DATABASE_URL is set in your environment if you rely on Postgres-backed features"
+fi
+
 if is_listening $BACKEND_PORT; then
   echo "Backend already listening on port $BACKEND_PORT (skipping start)"
 else
-  echo "Starting backend (node $BACKEND/index.js) -> $BACKEND_LOG"
-  nohup node "$BACKEND/index.js" >"$BACKEND_LOG" 2>&1 &
+  echo "Starting backend (ADMIN_DATABASE_URL=$ADMIN_DATABASE_URL node $BACKEND/index.js) -> $BACKEND_LOG"
+  nohup env ADMIN_DATABASE_URL="$ADMIN_DATABASE_URL" node "$BACKEND/index.js" >"$BACKEND_LOG" 2>&1 &
   echo $! > "$BACKEND_PID_FILE"
 fi
 
