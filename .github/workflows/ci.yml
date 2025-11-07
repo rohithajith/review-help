@@ -7,6 +7,56 @@ on:
     branches: [ main, testing ]
 
 jobs:
+  test:
+    name: Run tests (backend + client)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          CI: true
+        run: |
+          npm test --silent
+
+      - name: Install client dependencies
+        working-directory: client
+        run: |
+          npm ci
+
+      - name: Run client tests
+        working-directory: client
+        env:
+          CI: true
+        run: |
+          npm test -- --watchAll=false
+name: CI
+
+on:
+  push:
+    branches: [ main, testing ]
+  pull_request:
+    branches: [ main, testing ]
+
+jobs:
   backend-tests:
     runs-on: ubuntu-latest
     steps:

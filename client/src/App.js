@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import useTemplates from './hooks/useTemplates';
+import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
 import AppNavbar from './components/Navbar';
 import { Container } from 'react-bootstrap';
@@ -14,6 +15,8 @@ function App() {
   const settings = JSON.parse(localStorage.getItem('settings')) || {};
   const [selectedBusinessId, setSelectedBusinessId] = useState(settings.businessId || null);
   const { templates, loading, error } = useTemplates(selectedBusinessId);
+  // background gradient based on scroll position (smooth transition)
+  const scrollBg = useScrollGradient();
 
   // On app load, if no businessId is configured, attempt to pick the first
   // business returned by the API and persist it. This ensures the root page can
@@ -70,7 +73,7 @@ function App() {
 
   return (
     <Router>
-      <div className="App">
+      <div className="App" style={{ background: scrollBg, transition: 'background 300ms linear' }}>
         <AppNavbar />
         <Container>
           <header className="App-header">
