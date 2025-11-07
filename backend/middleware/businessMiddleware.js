@@ -12,7 +12,7 @@ module.exports = async (req, res, next) => {
     if (!BUSINESS_ID_RE.test(businessId)) return res.status(400).json({ error: 'Invalid businessId format' });
 
     // Lookup the tenant pool using the sanitized id (from tenants.json or env)
-    let pool = getTenantPool(businessId);
+    let pool = await getTenantPool(businessId);
     if (!pool) {
       // If businessId looks like an integer, try to resolve tenant_connection from admin DB
       const asNum = Number(businessId);

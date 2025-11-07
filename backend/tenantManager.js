@@ -23,7 +23,7 @@ function getAdminPool() {
   return poolCache.get('admin');
 }
 
-function getTenantPool(businessId) {
+async function getTenantPool(businessId) {
   const key = `tenant:${businessId}`;
   if (poolCache.has(key)) return poolCache.get(key);
 
@@ -32,9 +32,22 @@ function getTenantPool(businessId) {
   const conn = process.env[envKey] || (tenantsConfig.tenants && tenantsConfig.tenants[businessId] && tenantsConfig.tenants[businessId].connectionString);
   if (!conn) return null;
 
-  const pool = new Pool({ connectionString: conn });
-  poolCache.set(key, pool);
-  return pool;
+  // Create a pool and test connectivity. If the tenant database doesn't exist,
+  // attempt to create it via createTenantDatabase which will run migrations and seeding.
+  let pool = new Pool({ connectionString: conn });
+  try {
+    await pool.query('SELECT 1');
+    poolCache.set(key, pool);
+    return pool;
+  } catch (err) {
+    try {
+      await pool.end().catch(() => {});
+    } catch (e) {}
+    // Try to create the tenant DB (this will also run migrations/seeds)
+    const createdPool = await createTenantDatabase(conn, businessId);
+    poolCache.set(key, createdPool);
+    return createdPool;
+  }
 }
 
 /**
@@ -139,14 +152,31 @@ async function runTenantMigrations(pool) {
 }
 
 async function seedDefaultTemplates(pool) {
+  const templates = [
+    "Great food and friendly staff — highly recommend this restaurant!",
+    "Amazing flavors and great portion sizes. We'll be back soon!",
+    "The service was quick and the dishes were delicious. Five stars!",
+    "Cozy atmosphere and excellent service. Perfect for date night.",
+    "Fresh ingredients and a nice variety on the menu. Highly recommend the house special.",
+    "We loved the appetizers and the staff were attentive. A must-try place in town.",
+    "Outstanding value for the quality. Portions are generous and tasty.",
+    "Fantastic experience — food arrived hot and the server was very friendly.",
+    "Delicious desserts and a relaxing ambiance. Great spot for family dinners.",
+    "Consistently great meals and friendly staff. Our go-to restaurant now.",
+    "Thanks for visiting! Please leave us a review."
+  ];
+
   try {
-    const { rows } = await pool.query('SELECT COUNT(*)::int AS cnt FROM review_templates');
-    const count = rows && rows[0] ? rows[0].cnt : 0;
-    if (count === 0) {
-      await pool.query("INSERT INTO review_templates (text, used, created_at) VALUES ($1, false, NOW())", ['Thanks for visiting! Please leave us a review.']);
+    // Insert any templates that do not already exist (idempotent)
+    for (const t of templates) {
+      const { rows } = await pool.query('SELECT 1 FROM review_templates WHERE text = $1 LIMIT 1', [t]);
+      if (!rows || rows.length === 0) {
+        await pool.query('INSERT INTO review_templates (text, used, created_at) VALUES ($1, false, NOW())', [t]);
+      }
     }
   } catch (e) {
-    // ignore seeding errors
+    // ignore seeding errors; don't crash the startup
+    console.warn('Warning: failed to seed default templates', e && e.message ? e.message : e);
   }
 }
 

@@ -135,6 +135,21 @@ else
   echo "node not found; please seed manually: node $BACKEND/seedTemplates.js"
 fi
 
+# Seed tenant Postgres databases (idempotent). This will create/migrate tenant
+# DBs and seed templates if the script exists. It's safe to run even if already
+# seeded.
+if command -v node >/dev/null 2>&1; then
+  if [ -f "$ROOT/scripts/seedTenantTemplates.js" ]; then
+    echo "Seeding tenant templates (Postgres)"
+    # run but don't fail the whole script if it errors
+    node "$ROOT/scripts/seedTenantTemplates.js" || true
+  else
+    echo "No tenant seeder script found at $ROOT/scripts/seedTenantTemplates.js (skipping)"
+  fi
+else
+  echo "node not found; to seed tenant DBs run: node $ROOT/scripts/seedTenantTemplates.js"
+fi
+
 echo "\n=== Client setup ==="
 ensure_deps "$CLIENT"
 
@@ -142,7 +157,7 @@ if is_listening $CLIENT_PORT; then
   echo "Client already listening on port $CLIENT_PORT (skipping start)"
 else
   echo "Starting react dev server (PORT=$CLIENT_PORT) -> $CLIENT_LOG"
-  PORT=$CLIENT_PORT BROWSER=none npm --prefix "$CLIENT" start >"$CLIENT_LOG" 2>&1 &
+  REACT_APP_API_URL="$REACT_APP_API_URL" PORT=$CLIENT_PORT BROWSER=none npm --prefix "$CLIENT" start >"$CLIENT_LOG" 2>&1 &
   echo $! > "$CLIENT_PID_FILE"
 fi
 

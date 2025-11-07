@@ -25,13 +25,21 @@ app.use((req, res, next) => {
 });
 
 // Basic rate limiting for APIs
+// Rate limiter: keep a low limit in production but be permissive during local development
+const rateLimitMax = process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : (process.env.NODE_ENV === 'production' ? 60 : 1000);
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60, // limit each IP to 60 requests per windowMs
+  max: rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api', apiLimiter);
+
+// Apply rate limiting only in production by default. For local development
+// we avoid blocking the developer workflow. An operator can still set
+// `RATE_LIMIT_MAX` to enforce limits in non-production environments.
+if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
+  app.use('/api', apiLimiter);
+}
 
 // Load .env if present
 require('dotenv').config();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Container, Row, Col, Button, Modal, Form, Table, Alert, Card } from 'react-bootstrap';
 import axios from 'axios';
 
@@ -19,10 +19,57 @@ const AdminDashboard = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
 
+  const fetchTemplates = useCallback(async (bizId = selectedBusinessId) => {
+    try {
+      if (!bizId) return;
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/${bizId}/templates`);
+      setTemplates(response.data);
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+  }, [selectedBusinessId]);
+
+  const loadSettings = useCallback(() => {
+    const settings = JSON.parse(localStorage.getItem('settings')) || {};
+    setGoogleReviewUrl(settings.googleReviewUrl || '');
+    setBusinessName(settings.businessName || '');
+    setWelcomeMessage(settings.welcomeMessage || '');
+    setSelectedBusinessId(settings.businessId || null);
+  }, []);
+
+  const loadBusinesses = useCallback(async () => {
+    try {
+      const res = await axios.get(`${process.env.REACT_APP_API_URL}/businesses`);
+      const bizs = res.data || [];
+      setBusinesses(bizs);
+      // If no business is selected in settings, auto-select the first available
+      const settings = JSON.parse(localStorage.getItem('settings')) || {};
+      if ((!settings.businessId || settings.businessId === null || settings.businessId === '') && bizs.length > 0) {
+        const firstId = bizs[0].id;
+        settings.businessId = firstId;
+        localStorage.setItem('settings', JSON.stringify(settings));
+        setSelectedBusinessId(firstId);
+        // load templates and branding for the auto-selected business
+        fetchTemplates(firstId);
+        try {
+          const resBiz = await axios.get(`${process.env.REACT_APP_API_URL}/${firstId}/business`);
+          const biz = resBiz.data || {};
+          setBusinessName(biz.name || '');
+          setGoogleReviewUrl(biz.google_review_url || '');
+          setWelcomeMessage(biz.welcome_message || '');
+        } catch (err) {
+          console.error('Error loading auto-selected business details', err);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading businesses', err);
+    }
+  }, [fetchTemplates]);
+
   useEffect(() => {
     loadBusinesses();
     loadSettings();
-  }, []);
+  }, [loadBusinesses, loadSettings]);
 
   // Whenever selected business changes, load templates and branding
   useEffect(() => {
@@ -42,25 +89,7 @@ const AdminDashboard = () => {
     if (selectedBusinessId) {
       loadTenantData(selectedBusinessId);
     }
-  }, [selectedBusinessId]);
-
-  const fetchTemplates = async (bizId = selectedBusinessId) => {
-    try {
-      if (!bizId) return;
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/${bizId}/templates`);
-      setTemplates(response.data);
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-    }
-  };
-
-  const loadSettings = () => {
-    const settings = JSON.parse(localStorage.getItem('settings')) || {};
-    setGoogleReviewUrl(settings.googleReviewUrl || '');
-    setBusinessName(settings.businessName || '');
-    setWelcomeMessage(settings.welcomeMessage || '');
-    setSelectedBusinessId(settings.businessId || null);
-  };
+  }, [selectedBusinessId, fetchTemplates]);
 
   const saveSettings = () => {
     const settings = {
@@ -141,39 +170,10 @@ const AdminDashboard = () => {
     );
   };
 
-  const loadBusinesses = async () => {
-    try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/businesses`);
-      const bizs = res.data || [];
-      setBusinesses(bizs);
-      // If no business is selected in settings, auto-select the first available
-      const settings = JSON.parse(localStorage.getItem('settings')) || {};
-      if ((!settings.businessId || settings.businessId === null || settings.businessId === '') && bizs.length > 0) {
-        const firstId = bizs[0].id;
-        settings.businessId = firstId;
-        localStorage.setItem('settings', JSON.stringify(settings));
-        setSelectedBusinessId(firstId);
-        // load templates and branding for the auto-selected business
-        fetchTemplates(firstId);
-        try {
-          const resBiz = await axios.get(`${process.env.REACT_APP_API_URL}/${firstId}/business`);
-          const biz = resBiz.data || {};
-          setBusinessName(biz.name || '');
-          setGoogleReviewUrl(biz.google_review_url || '');
-          setWelcomeMessage(biz.welcome_message || '');
-        } catch (err) {
-          console.error('Error loading auto-selected business details', err);
-        }
-      }
-    } catch (err) {
-      console.error('Error loading businesses', err);
-    }
-  };
-
   const handleCreateBusiness = async () => {
     try {
       if (!newBusinessName) return setAlertMessage('Business name required');
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/businesses`, { name: newBusinessName });
+      await axios.post(`${process.env.REACT_APP_API_URL}/businesses`, { name: newBusinessName });
       setAlertMessage('Business created');
       setAlertVariant('success');
       setNewBusinessName('');

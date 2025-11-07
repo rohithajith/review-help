@@ -43,8 +43,8 @@ const useTemplates = (businessId) => {
   };
 
   useEffect(() => {
-    // when businessId changes, attempt fetch; if falsy, ensure we are not stuck
-    // in loading state
+    // when businessId changes, attempt fetch; do not include fetchTemplates in
+    // the dependency array to avoid re-creating the effect on every render.
     if (businessId) {
       fetchTemplates();
     } else {
