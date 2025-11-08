@@ -7,6 +7,79 @@ on:
     branches: [ main, testing ]
 
 jobs:
+  backend-tests:
+    name: Backend tests (with Postgres)
+    runs-on: ubuntu-latest
+    services: {}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install backend deps
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Start docker-compose Postgres
+        run: |
+          docker-compose up -d
+          # wait until Postgres accepts connections (helper script)
+          node backend/waitForPostgres.js
+
+      - name: Export DB envs for tests
+        run: |
+          # The repository's docker-compose maps container 5432 -> host 5433 in CI/local
+          echo "ADMIN_DATABASE_URL=postgres://appuser:password@localhost:5433/admin_db" >> $GITHUB_ENV
+          echo "TENANT_DB_URL_1=postgres://appuser:password@localhost:5433/tenant1_db" >> $GITHUB_ENV
+          echo "TENANT_DB_URL_2=postgres://appuser:password@localhost:5433/tenant2_db" >> $GITHUB_ENV
+
+      - name: Seed tenant DBs (idempotent)
+        working-directory: ./backend
+        run: node seedTenants.js
+
+      - name: Run backend tests
+        working-directory: ./backend
+        env:
+          CI: true
+        run: npm test -- --runInBand
+
+      - name: Tear down docker-compose
+        run: docker-compose down -v
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install frontend deps
+        working-directory: ./client
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: ./client
+        env:
+          CI: true
+        run: npm test -- --watchAll=false
+name: CI
+
+on:
+  push:
+    branches: [ main, testing ]
+  pull_request:
+    branches: [ main, testing ]
+
+jobs:
   test:
     name: Run tests (backend + client)
     runs-on: ubuntu-latest

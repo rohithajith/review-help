@@ -26,6 +26,8 @@ ADMIN_DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:
 # Client API base used by the React app (create-react-app reads REACT_APP_* at compile time)
 # Default to backend API path; can be overridden by setting REACT_APP_API_URL in the environment
 REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:5002/api}
+# Control whether tenant seeding runs when starting locally (defaults to true for dev)
+SEED_TENANTS=${SEED_TENANTS:-true}
 
 
 ensure_deps() {
@@ -139,12 +141,16 @@ fi
 # DBs and seed templates if the script exists. It's safe to run even if already
 # seeded.
 if command -v node >/dev/null 2>&1; then
-  if [ -f "$ROOT/scripts/seedTenantTemplates.js" ]; then
-    echo "Seeding tenant templates (Postgres)"
-    # run but don't fail the whole script if it errors
-    node "$ROOT/scripts/seedTenantTemplates.js" || true
+  if [ "$SEED_TENANTS" = "true" ]; then
+    if [ -f "$ROOT/scripts/seedTenantTemplates.js" ]; then
+      echo "Seeding tenant templates (Postgres)"
+      # run but don't fail the whole script if it errors
+      node "$ROOT/scripts/seedTenantTemplates.js" || true
+    else
+      echo "No tenant seeder script found at $ROOT/scripts/seedTenantTemplates.js (skipping)"
+    fi
   else
-    echo "No tenant seeder script found at $ROOT/scripts/seedTenantTemplates.js (skipping)"
+    echo "SEED_TENANTS is not true; skipping tenant seeding (set SEED_TENANTS=true to enable)"
   fi
 else
   echo "node not found; to seed tenant DBs run: node $ROOT/scripts/seedTenantTemplates.js"

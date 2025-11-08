@@ -55,6 +55,12 @@ npm install
 PORT=3002 BROWSER=none npm start
 ```
 
+Persistence note (dev)
+- The local `postgres` started via `docker-compose.yml` stores DB files in a named volume `pgdata`. This keeps your `admin_db` and tenant databases persistent across container restarts and recreates. To inspect or remove the data you can run `docker-compose down -v` to remove volumes or `docker volume ls` / `docker volume rm` for manual management.
+
+Seeding in dev
+- By default the repository provides idempotent seed scripts. Use the `SEED_TENANTS` env var to control automatic seeding when using `start-all.sh` (for example: `SEED_TENANTS=true ./start-all.sh`). Seed scripts will register tenants in the admin DB and create/seed tenant DBs if missing.
+
 3) Seed the DB (optional — idempotent)
 
 ```bash

@@ -26,8 +26,8 @@ async function seed() {
         await admin.query('INSERT INTO businesses (name, tenant_connection, google_review_url, logo_url, welcome_message) VALUES ($1,$2,$3,$4,$5)', [tenantName, info.connectionString, info.google_review_url || null, info.logo_url || null, info.welcome_message || null]);
       }
 
-      // seed tenant DB with templates
-      const pool = getTenantPool(id);
+      // seed tenant DB with templates (getTenantPool is async)
+      const pool = await getTenantPool(id);
       if (!pool) continue;
       await pool.query(`CREATE TABLE IF NOT EXISTS review_templates (
         id SERIAL PRIMARY KEY,
