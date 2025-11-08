@@ -1,0 +1,70 @@
+name: CI Monitor
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  notify:
+    name: Notify PRs on CI failure
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post comment on related PRs
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const run = context.payload.workflow_run;
+            const conclusion = run.conclusion || 'unknown';
+            const url = run.html_url;
+            const headSha = run.head_sha;
+
+            // Find PRs associated with the commit that triggered the workflow run
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: headSha,
+            });
+
+            // Gather job-level details for the run
+            let jobsData = [];
+            try {
+              const jobsResp = await github.rest.actions.listJobsForWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+              });
+              jobsData = jobsResp.data.jobs || [];
+            } catch (e) {
+              core.warning('Failed to fetch jobs for workflow run: ' + (e && e.message));
+            }
+
+            const failingJobs = jobsData.filter(j => j.conclusion && j.conclusion !== 'success');
+            const jobLines = jobsData.map(j => `- ${j.name}: ${j.conclusion || j.status} (${j.html_url || run.html_url})`).join('\n');
+
+            if (!prs || prs.length === 0) {
+              core.info('No pull requests associated with commit; skipping comment.');
+            } else {
+              for (const pr of prs) {
+                let body = `⚠️ CI run **${run.name}** finished with conclusion **${conclusion}**.\n\n`;
+                body += `Run details: ${url}\n\n`;
+                if (jobsData.length > 0) {
+                  body += `**Job summary:**\n${jobLines}\n\n`;
+                }
+                if (failingJobs.length > 0) {
+                  body += `**Failing jobs:**\n`;
+                  for (const fj of failingJobs) {
+                    body += `- ${fj.name}: ${fj.conclusion || fj.status} — logs: ${fj.html_url || url}\n`;
+                  }
+                }
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body,
+                });
+              }
+            }

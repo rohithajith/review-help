@@ -16,6 +16,41 @@ services:
       test: ["CMD-SHELL", "pg_isready -U appuser -d admin_db -h localhost -p 5432"]
       interval: 5s
       retries: 10
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 5002
+      # Backend will connect to the Postgres container by service name 'postgres'
+      ADMIN_DATABASE_URL: "postgres://appuser:password@postgres:5432/admin_db"
+    ports:
+      - '5002:5002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      # Expose container port 80 on host 3002 (common dev/admin port)
+      - '3002:80'
+    depends_on:
+      - backend
+    networks:
+      - app-network
 
 volumes:
   pgdata:
+
+networks:
+  app-network:
+    driver: bridge
