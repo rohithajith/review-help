@@ -7,17 +7,29 @@ Important product constraint: the app does NOT (and must not) auto-post reviews 
 
 ## What changed (recent updates)
 
-Below are important updates present on the `testing` branch. These changes improve local developer experience, add integration-style tests (mocked), and harden the multi-tenant startup flow for local development.
+### Supabase Migration (November 2025)
 
-- Backend: added a mocked integration test (`backend/__tests__/integration.test.js`) that validates business/template APIs, middleware, rate-limiting and centralized error handling without requiring a live Postgres instance (Jest + Supertest).
-- Startup & orchestration: added `start-all.sh` to orchestrate Docker (Postgres), backend, and client for local development. The script waits for Postgres readiness, exports `ADMIN_DATABASE_URL`, and starts both servers with the correct env variables.
-- Docker: updated `docker-compose.yml` in dev to map host port `5433` -> container `5432` to avoid conflicts with a local Postgres instance. If you prefer the default `5432`, stop your host Postgres before starting the compose stack.
-- Backend tenancy fixes: fixed tenant creation and migration orchestration so that tenant DBs are created, migrations run, and seed templates are inserted automatically when a new business is created.
-- Frontend fixes: fixed a loading bug in `client/src/hooks/useTemplates.js` that caused the UI to show "Loading templates..." indefinitely when no business was selected. The app now auto-selects the first business on load and persists it to `localStorage` so templates appear on the homepage.
-- Admin UI/UX: improved `client/src/components/AdminDashboard.js` to present boxed, separated sections (Business, Templates, Branding & Links) and added CSS in `client/src/App.css` to provide consistent boxed cards and spacing.
-- Demo data: seeded 10 sample templates into the demo tenant DB (visible in tenant Postgres `review_templates`) to make it easier to explore the UI.
+**The app now uses Supabase (managed Postgres) instead of Docker-based local Postgres.**
 
-If you want to reproduce these changes locally, follow the "How to run the full stack (dev)" section below.
+Key changes:
+- **No Docker required** - the backend connects directly to Supabase
+- **Single shared database** - all businesses share one DB, isolated by `business_id` column
+- **Automatic SSL** - connections to Supabase use SSL automatically
+- **Simplified deployment** - just set `ADMIN_DATABASE_URL` and run the server
+
+### Material UI Migration (November 2025)
+
+The frontend has been completely refactored from Bootstrap/custom CSS to **Material UI (MUI)** for a modern, professional look:
+
+- **MUI v7.3.5** with `@emotion/react` and `@emotion/styled` for styling
+- **Custom theme** (`client/src/theme.js`) with green primary color (#10b981) matching brand identity
+- **All components refactored**: App, TemplateList, TemplateCard, EditModal, AdminDashboard, Footer, LogsViewer, TemplateIntroModal
+- **Navbar removed** - simplified UI without hamburger menu or header block
+- **Business logo support** - displays logo for businesses (e.g., Myra's Fish Bar) on template page
+- **Clean action buttons** - centered Edit and Copy & Review buttons with modern styling
+- **Responsive Grid layout** using MUI Grid with `item xs={12} sm={6} md={4}` breakpoints
+
+See `CHANGELOG.md` for a concise file-level change log describing recent edits.
 
 ## Features
 1. Template list (fetched from backend DB)
@@ -26,187 +38,352 @@ If you want to reproduce these changes locally, follow the "How to run the full 
 4. Admin dashboard to create, edit, delete templates and manage site settings (stored in localStorage currently)
 
 ## Tech stack
-- Frontend: React (create-react-app)
+- Frontend: React 19 (create-react-app) with **Material UI v7.3.5** and Emotion styling
 - Backend: Node.js + Express
-- Database: SQLite (file: `backend/reviewapp.db`)
+- Database: **Supabase (Postgres)** - managed cloud database with automatic SSL
 
-## Local setup and run
+## Quick Start with Supabase
 
-Prerequisites
-- Node.js and npm
+### 1. Create a Supabase Project
 
-1) Install backend deps and start backend
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Note your database connection string from: **Project Settings > Database > Connection string (URI)**
+3. URL-encode special characters in your password:
+   - `&` → `%26`
+   - `@` → `%40`
+   - `#` → `%23`
+
+### 2. Configure the Backend
 
 ```bash
-cd /Users/rohith/Desktop/review-app/backend
+cd backend
+
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env and set your Supabase connection string
+# ADMIN_DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT.supabase.co:5432/postgres
+```
+
+### 3. Start the Backend
+
+```bash
+# Install dependencies
 npm install
-# start dev server (nodemon) or run directly
-npm run dev    # uses nodemon if available
-# or
+
+# Start the server (tables are created automatically)
 node index.js
 ```
 
-2) Install client deps and start frontend
+You should see:
+```
+✓ Connected to Supabase/Postgres
+✓ Database schema ready
+Server is running on port 5002
+```
+
+### 4. Seed Templates for a Business
 
 ```bash
-cd /Users/rohith/Desktop/review-app/client
+# From the repo root
+ADMIN_DATABASE_URL="your_connection_string" BUSINESS_ID=1 node scripts/seedSharedTenant.js
+```
+
+### 5. Start the Frontend
+
+```bash
+cd client
 npm install
-# start react dev server (the project respects PORT from .env)
-PORT=3002 BROWSER=none npm start
+npm start
 ```
 
-Persistence note (dev)
-- The local `postgres` started via `docker-compose.yml` stores DB files in a named volume `pgdata`. This keeps your `admin_db` and tenant databases persistent across container restarts and recreates. To inspect or remove the data you can run `docker-compose down -v` to remove volumes or `docker volume ls` / `docker volume rm` for manual management.
+## Deploying to GCP
 
-Seeding in dev
-- By default the repository provides idempotent seed scripts. Use the `SEED_TENANTS` env var to control automatic seeding when using `start-all.sh` (for example: `SEED_TENANTS=true ./start-all.sh`). Seed scripts will register tenants in the admin DB and create/seed tenant DBs if missing.
+### Option A: GCP Compute Engine (VM)
 
-3) Seed the DB (optional — idempotent)
+1. Create a VM instance (Ubuntu 22.04 recommended)
+2. Install Node.js 18+:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+   sudo apt-get install -y nodejs
+   ```
+3. Clone the repo and set up:
+   ```bash
+   git clone https://github.com/rohithajith/review-help.git
+   cd review-help/backend
+   npm install --production
+   ```
+4. Create `.env` with your Supabase URL:
+   ```bash
+   echo 'ADMIN_DATABASE_URL=postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres' > .env
+   echo 'NODE_ENV=production' >> .env
+   echo 'PORT=5002' >> .env
+   ```
+5. Run with PM2 (recommended for production):
+   ```bash
+   npm install -g pm2
+   pm2 start index.js --name review-backend
+   pm2 save
+   pm2 startup
+   ```
+
+### Option B: GCP Cloud Run (Containerized)
+
+1. Build and push Docker image:
+   ```bash
+   # Build from repo root
+   docker build -t gcr.io/YOUR_PROJECT/review-backend -f backend/Dockerfile .
+   docker push gcr.io/YOUR_PROJECT/review-backend
+   ```
+2. Deploy to Cloud Run:
+   ```bash
+   gcloud run deploy review-backend \
+     --image gcr.io/YOUR_PROJECT/review-backend \
+     --set-env-vars "ADMIN_DATABASE_URL=postgresql://..." \
+     --port 5002 \
+     --allow-unauthenticated
+   ```
+
+### Frontend Deployment
+
+Build the React app and serve as static files:
+```bash
+cd client
+npm run build
+# Serve the 'build' folder with nginx, Cloud Storage, or any static host
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/businesses` | List all businesses |
+| POST | `/api/businesses` | Create a new business |
+| GET | `/api/:businessId/templates` | Get active templates for a business |
+| POST | `/api/:businessId/templates` | Create a new template |
+| PUT | `/api/:businessId/templates/:id` | Update a template |
+| DELETE | `/api/:businessId/templates/:id` | Delete a template |
+| POST | `/api/:businessId/templates/:id/use` | Mark template as used |
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ADMIN_DATABASE_URL` | Yes | Supabase Postgres connection string |
+| `PORT` | No | Server port (default: 5002) |
+| `NODE_ENV` | No | `production` or `development` |
+| `RATE_LIMIT_MAX` | No | Max requests/minute (default: 60 in production) |
+| `OPENROUTER_API_KEY` | No | For AI template regeneration |
+
+## Local Development (Legacy Docker Setup)
+
+If you prefer local Postgres via Docker instead of Supabase:
 
 ```bash
-node /Users/rohith/Desktop/review-app/backend/seedTemplates.js
+# Start Postgres container
+docker-compose up -d
+
+# Set local connection string
+export ADMIN_DATABASE_URL=postgres://appuser:password@localhost:5433/admin_db
+
+# Start backend
+cd backend && npm run dev
 ```
 
-4) Open in browser
-- Frontend: http://localhost:3002
-- Admin UI: http://localhost:3002/admin
-- Backend API: http://localhost:5002/api
+## Troubleshooting
 
-## Environment
-- The client reads `REACT_APP_API_URL` from `client/.env` (defaults to `http://localhost:5002/api`). Adjust if your backend runs elsewhere.
+### "self-signed certificate" error
+This is handled automatically for Supabase connections. If you still see this error, ensure your `ADMIN_DATABASE_URL` contains `supabase.co` in the hostname.
 
-## Database schema (current)
+### "relation does not exist" error
+The tables are created automatically on server startup. If you see this error:
+1. Check your `ADMIN_DATABASE_URL` is correct
+2. Restart the backend server
+3. Check the Supabase SQL editor to verify tables exist
 
-review_templates
-```sql
-CREATE TABLE IF NOT EXISTS review_templates (
-   id INTEGER PRIMARY KEY AUTOINCREMENT,
+### Connection refused
+1. Verify your Supabase project is active
+2. Check the connection string format
+3. Ensure special characters in the password are URL-encoded
+ # Review App
+ 
+ ## Overview
+ This is a small full-stack web app that helps customers compose and submit authentic Google reviews for a business. After scanning a QR code or visiting the site, customers see a list of editable review templates. They may edit a template, copy the text to their clipboard, then open the business's Google Maps review page and manually paste and submit the review.
+ 
+ Important product constraint: the app does NOT (and must not) auto-post reviews on behalf of users. All reviews must be edited and submitted manually by the customer for authenticity and compliance.
+ 
+ ## What changed (architecture & pipeline)
+ 
+ This repository now includes a human-only learning pipeline that rotates templates and refills a backup pool using a batched LLM call driven only by user-edited reviews. Key points:
+ 
+ - Always 10 active templates: the app maintains exactly 10 active templates (`review_templates`) shown to users.
+ - Backup pool: a second table `backup_templates` stores 10 backup templates used for rotation.
+ - Human-only learning: only user-edited templates that the user confirms by clicking "Copy & Review" are archived (inserted into `archived_templates`) and considered for learning. Unedited templates are never used as training input.
+ - Archive + rotate endpoint: `POST /api/:businessId/templates/:id/use` accepts `{ modifiedText }`, archives the edited text, removes the active template, promotes one from `backup_templates` into `review_templates`, and returns immediately. Rotation is tenant-scoped and transactional so the UI never observes fewer than 10 active templates.
+ - Batched LLM generation: when a tenant accumulates 10 archived (edited) templates, an asynchronous generation job batches those 10 inputs and calls the OpenRouter model `meta-llama/llama-3.1-8b-instruct:free` to produce 10 new backup templates. Generated templates are validated and then atomically replace the `backup_templates` for that tenant; `archived_templates` is cleared on success.
+ - Safety guards: generation includes strict validation — JSON parsing, length=10, uniqueness, and a trigram Dice similarity test that rejects any generated template that is >=85% similar to any archived input. Duplicate or too-similar outputs are rejected and will cause the job to retry (with backoff) or abort safely without modifying backups.
+ - Backup-empty behavior: if a rotation finds `backup_templates` empty, the server inserts a small safe fallback template so the active pool remains at 10, and triggers an urgent background generation to refill backups.
+ - Non-blocking: LLM generation runs asynchronously in the background and never blocks the user's request flow.
+ 
+ If you want to reproduce or inspect this flow, see the Backend section below for endpoints and the `backend/services/generationService.js` implementation.
+ 
+ ## Features
+ 1. Template list (fetched from backend DB)
+ 2. Edit a template (client-side modal) and "Copy & Review" which archives only edited templates
+ 3. Atomic rotation: active templates are rotated from a backup pool to ensure exactly 10 actives
+ 4. Async LLM-based backup refill that learns only from human-edited input (batched, tenant-scoped)
+ 5. Admin dashboard to create, edit, delete templates and manage site settings (stored in localStorage currently)
+ 
+ ## Tech stack
+ - Frontend: React (create-react-app)
+ - Backend: Node.js + Express
+ - Database: Postgres (multi-tenant) in production; local dev can use Dockerized Postgres. The code includes per-tenant DB management in `backend/tenantManager.js`.
+ 
+ ## Local setup and run
+ 
+ Prerequisites
+ - Node.js and npm
+ 
+ 1) Install backend deps and start backend
+ 
+ ```bash
+ cd /Users/rohith/Desktop/review-app/backend
+ npm install
+ # start dev server (nodemon) or run directly
+ npm run dev    # uses nodemon if available
+ # or
+ node index.js
+ ```
+ 
+ 2) Install client deps and start frontend
+ 
+ ```bash
+ cd /Users/rohith/Desktop/review-app/client
+ npm install
+ # start react dev server (the project respects PORT from .env)
+ PORT=3002 BROWSER=none npm start
+ ```
+ 
+ Persistence note (dev)
+ - The local `postgres` started via `docker-compose.yml` stores DB files in a named volume `pgdata`. This keeps your `admin_db` and tenant databases persistent across container restarts and recreates. To inspect or remove the data you can run `docker-compose down -v` to remove volumes or `docker volume ls` / `docker volume rm` for manual management.
+ 
+ Seeding in dev
+ - By default the repository provides idempotent seed scripts. Use the `SEED_TENANTS` env var to control automatic seeding when using `start-all.sh` (for example: `SEED_TENANTS=true ./start-all.sh`). Seed scripts will register tenants in the admin DB and create/seed tenant DBs if missing.
+ 
+ 3) Seed the DB (optional — idempotent)
+ 
+ ```bash
+ node /Users/rohith/Desktop/review-app/backend/seedTemplates.js
+ ```
+ 
+ 4) Open in browser
+ - Frontend (dev): http://localhost:3005  
+    Note: Create React App will try `3000` and automatically pick a different
+    free port if that one is in use (for example `3005` in this environment).
+    Check the dev-server output for the exact `Local` URL. To force a port,
+    start the client with `PORT=3002 npm start`.
+ - Admin UI: http://localhost:3005/#/admin
+ - Backend API: http://localhost:5002/api
+
+## Verify after start
+
+After running `./start-all.sh` (or starting backend and client manually), run
+these quick checks to ensure the backend, proxy, and template seeding are
+working as expected. Run each command from the repo root.
+
+```bash
+# backend health
+curl -sS http://localhost:5002/ | sed -n '1p'
+
+# list templates for business id 1 (direct to backend)
+curl -sS http://localhost:5002/api/1/templates | jq '.'
+
+# same API via CRA dev-server proxy (replace 3005 with the dev port printed)
+curl -sS http://localhost:3005/api/1/templates | jq '.'
+
+# list admin businesses (making sure admin registry was restored)
+curl -sS http://localhost:5002/api/businesses | jq '.'
+
+# inspect recent server/client logs persisted by the backend
+tail -n 200 backend/logs/errors.log
+
+# fetch recent logs via the backend helper endpoint
+curl -sS 'http://localhost:5002/api/_client-log?lines=50' | jq '.'
+```
+
+Notes:
+- If `curl` to `http://localhost:5002/` fails with connection refused or
+  `EADDRINUSE`, check for docker containers or other processes holding
+  port 5002 (`docker ps` and `lsof -i :5002`).
+- If the CRA dev-server is running on a different port, check the port printed
+  by the client start command and use that port in the proxy checks above.
+ 
+ ## Environment
+ - The client reads `REACT_APP_API_URL` from `client/.env` (defaults to `http://localhost:5002/api`). Adjust if your backend runs elsewhere.
+ 
+ ### New env variables
+ - `OPENROUTER_API_KEY` - required for the asynchronous generation pipeline to call OpenRouter. If unset, generation jobs will log an error and exit; existing backups remain unchanged.
+ 
+ ### Notes about runtime
+ - The generation service uses `fetch` and `AbortController`. On Node 18+ native `fetch` is used. On older Node versions, install `node-fetch` so the generation service can call the OpenRouter API.
+ 
+ ## Database schema (current)
+ 
+ This project now manages three per-tenant tables that drive the learning/rotation pipeline:
+ 
+ review_templates (active 10)
+ ```sql
+ CREATE TABLE IF NOT EXISTS review_templates (
+   id SERIAL PRIMARY KEY,
    text TEXT NOT NULL,
-   used INTEGER DEFAULT 0,
-   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-archived_templates
-```sql
-CREATE TABLE IF NOT EXISTS archived_templates (
-   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   used BOOLEAN DEFAULT false,
+   created_at TIMESTAMP DEFAULT NOW()
+ );
+ ```
+ 
+ backup_templates (rotation pool)
+ ```sql
+ CREATE TABLE IF NOT EXISTS backup_templates (
+   id SERIAL PRIMARY KEY,
    text TEXT NOT NULL,
-   archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-Notes: We currently create these tables on server start (`backend/db.js`). For production it is recommended to switch to migrations (see "Next steps").
-
-## Admin Dashboard
-- URL: `/admin` on the client server (e.g. `http://localhost:3002/admin`).
-- Capabilities: list templates, create template, edit template, delete single/multiple templates, manage a couple of site settings stored in browser `localStorage` (Google review link, business name, welcome message).
-
-Usage notes
-- The admin UI now calls the backend API (configured by `REACT_APP_API_URL`) and expects templates to have `id` fields (SQLite integer ids).
-
-## Product & compliance notes
-- Manual submission only: customers must manually paste and submit reviews in Google Maps. The app copies text to clipboard and opens the Google Maps review page but does not submit on their behalf.
-- Privacy: the app does not collect personal user data by default. If you plan to collect or store personally identifiable information, add a privacy policy and secure storage.
-- Rate limiting & abuse: for production add rate limiting, authentication for admin actions, and input validation.
-
-## Next Steps / Multi-Tenant Readiness
-
-### 1. Add `businessId` to templates
-- Add a `businessId` field to `review_templates` (and optionally `archived_templates`) to associate templates with the correct business.  
-- Update admin UI to allow selecting or creating a business when managing templates.  
-- Update API and frontend fetch logic to filter templates per business.
-
-### 2. Introduce migrations
-- Replace runtime table creation with a migration tool (Knex, Prisma, or Sequelize).  
-- Benefits: versioned schema updates, safer multi-tenant expansion, easier rollback.
-
-### 3. Server-side validation and security
-- Validate and sanitize all user inputs (template text, business info, etc.).  
-- Add logging for API requests and admin actions.  
-- Implement rate limiting for review template requests to prevent abuse.
-
-### 4. Archive-on-use flow
-- When a customer confirms submission:  
-  - Insert the used template into `archived_templates`.  
-  - Mark original template as `used` or remove it from the active list.  
-- Keeps template list fresh and tracks historical submissions per business.
-
-### 5. Tests and CI
-- Add unit tests for backend controllers and frontend API fetches.  
-- Integrate CI (GitHub Actions or similar) to run tests automatically on commits/PRs.  
-- Ensures reliability as you expand multi-tenant logic.
-
-**Priority order for implementation:** 1 → 2 → 3 → 4 → 5  
-This order ensures your app can handle multiple businesses safely before refining UX and automation.
-
-## Recommended production architecture: one Postgres server, many tenant databases
-
-If you want per-tenant isolation while keeping a single Postgres server process, a recommended deployment is:
-
-   - One Postgres server (one instance/cluster) that hosts multiple databases:
-      - admin_db (business registry)
-      - tenant1_db
-      - tenant2_db
-      - tenant3_db
-      - tenant4_db
-
-Why this pattern?
-   - Pros:
-      - Strong data isolation: each tenant has its own database file/namespace (easier backups/restore per tenant).
-      - Per-tenant migrations and seeds can run independently.
-      - Easier to revoke access for a single tenant without affecting others.
-      - Lower management overhead than separate Postgres servers while preserving tenant separation.
-   - Cons:
-      - More databases to manage on a single server (monitoring/maintenance required).
-      - Cross-tenant queries require an external aggregate step; not suitable if you need frequent cross-tenant joins.
-      - Resource contention on the same Postgres instance is still possible; plan for resource limits and monitoring.
-
-How this repo fits that pattern
-   - The codebase already implements a per-tenant-DB approach at the application layer: the `tenantManager` handles creating tenant databases (when needed), returning a connection pool for a given tenant, and running per-tenant migrations/seeds.
-   - The `admin_db` (configured via `ADMIN_DATABASE_URL`) stores businesses and a `tenant_connection` value used to connect to the tenant database for that business.
-   - In short: this repo is already compatible with a single Postgres server hosting multiple tenant DBs. No code changes are required to adopt that architecture; you only need to configure your Postgres instance and environment variables correctly.
-
-Quick configuration & run notes (local / docker)
-   1. Start a Postgres server reachable from the app (docker-compose in this repo exposes container port 5432, mapped to host `5433:5432` to avoid local Postgres conflicts). In production you'll use the standard `5432` port on your DB host.
-   2. Ensure `ADMIN_DATABASE_URL` points to the admin DB (example):
-
-```bash
-export ADMIN_DATABASE_URL="postgres://appuser:password@db-host:5432/admin_db"
-```
-
-   3. Start the backend (it will use `ADMIN_DATABASE_URL` to read the businesses table). When a new business is created (via the API or seed script) the backend's `tenantManager` will create the tenant database (e.g. `tenant1_db`) and run tenant migrations/seeds.
-
-   4. Tenant connection strings stored in the `businesses` table should be full Postgres URLs, for example:
-
-```text
-postgres://appuser:password@db-host:5432/tenant1_db
-```
-
-   5. To inspect tenant DBs locally with psql (dockerized Postgres):
-
-```bash
-# connect to tenant1_db (from host)
-psql "postgres://appuser:password@localhost:5433/tenant1_db"
-
-# or inside the postgres container
-docker exec -it <compose-project>_postgres_1 psql -U appuser -d tenant1_db
-```
-
-Migration recommendations
-   - Use a migration tool (Knex or Prisma). Run tenant schema migrations when a tenant DB is created. The repo includes migration helpers referenced by `tenantManager` but you should centralize migrations into a tool and add a reproducible `npm run migrate:tenant <connectionString>` flow.
-
-Operational notes
-   - Backups: snapshot databases individually (pg_dump per tenant) or use a physical backup of the instance depending on needs.
-   - Monitoring: track connections, locks, and per-database disk usage to detect tenant resource pressure.
-   - Security: ensure each tenant DB is only accessible by the application user or a controlled set of DB users.
-
-No code changes applied in this branch
-   - Per your instruction, I did not modify application code to implement or force this architecture — I only updated this `README.md` to recommend the approach and explain how to configure it for this repo. The codebase already includes the per-tenant DB model at the application layer (`tenantManager` + business registry).
-
-
-## Contributing
-PRs and issues welcome. For non-trivial changes (DB schema, production config), please open an issue first so we can coordinate migrations and deployment plans.
-
-## License
-This project is licensed under the ISC License.
+   created_at TIMESTAMP DEFAULT NOW()
+ );
+ ```
+ 
+ archived_templates (stores only edited user reviews for learning)
+ ```sql
+ CREATE TABLE IF NOT EXISTS archived_templates (
+   id SERIAL PRIMARY KEY,
+   text TEXT NOT NULL,
+   archived_at TIMESTAMP DEFAULT NOW()
+ );
+ ```
+ 
+ Notes:
+ - `review_templates` should contain exactly 10 active rows presented to users. Rotation is transactional to preserve that invariant.
+ - `backup_templates` holds the next 10 templates to rotate in. The generation job replaces this table atomically when it successfully produces 10 validated templates.
+ - `archived_templates` stores only user-edited templates (the only inputs used for learning). When a tenant accumulates 10 archived rows, a background job calls the LLM to generate new backups.
+ 
+ For production a migration system (Knex/Prisma) and per-tenant `business_id` columns are recommended; the included `tenantManager` creates these tables at tenant creation time.
+ 
+ ## Operational notes & recommendations (implemented / next steps)
+ 
+ - Tenant-scoped triggers: archive counts and generation jobs are tenant-scoped (the backend attaches a tenant `pool` per request). This prevents cross-tenant data mixing.
+ - Similarity guard: the generation pipeline includes a trigram Dice similarity check and rejects generated templates with >=85% similarity to any archived input. For production Postgres consider enabling `pg_trgm` and moving similarity checks to the DB for performance.
+ - Backup-empty strategy: the controller ensures the active pool remains at 10 by inserting a safe fallback if backups are empty and scheduling urgent generation; you can change this policy to block rotation until generation completes if you prefer stricter behavior.
+ - Monitoring & retries: generation uses exponential backoff and logs failures. Failed jobs do not block users; archived rows remain until a successful generation replaces backups.
+ - Secrets: store `OPENROUTER_API_KEY` securely (env, Vault, etc.).
+ 
+ Recommended next steps:
+ 
+ 1. Add a migration system (Knex/Prisma) and evolve runtime table creation into versioned migrations.
+ 2. Add admin debug endpoints to inspect `archived_templates` and `backup_templates` per tenant.
+ 3. Optionally replace the in-process generation trigger with a persistent queue (Bull/Redis) for reliability at scale.
+ 
+ This README documents the new implemented architecture and pipeline. See `backend/services/generationService.js`, `backend/controllers/templatesController.js`, and `backend/tenantManager.js` for the implementation details.
+ 
+ ## Contributing
+ PRs and issues welcome. For non-trivial changes (DB schema, production config), please open an issue first so we can coordinate migrations and deployment plans.
+ 
+ ## License
+ This project is licensed under the ISC License.

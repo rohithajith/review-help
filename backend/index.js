@@ -1,10 +1,13 @@
-// import 'bootstrap/dist/css/bootstrap.min.css';
+// Load .env if present (must be before other requires that use env vars)
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const templatesRoutes = require('./routes/templatesRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
+const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -25,7 +28,6 @@ app.use((req, res, next) => {
 });
 
 // Basic rate limiting for APIs
-// Rate limiter: keep a low limit in production but be permissive during local development
 const rateLimitMax = process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : (process.env.NODE_ENV === 'production' ? 60 : 1000);
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -34,24 +36,25 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Apply rate limiting only in production by default. For local development
-// we avoid blocking the developer workflow. An operator can still set
-// `RATE_LIMIT_MAX` to enforce limits in non-production environments.
 if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
   app.use('/api', apiLimiter);
 }
 
-// Load .env if present
-require('dotenv').config();
-const { getAdminPool } = require('./tenantManager');
-// Ensure admin pool can be created (will throw if misconfigured)
-try {
-  const admin = getAdminPool();
-  admin.query('SELECT 1').catch(() => {});
-  console.log('Admin Postgres pool configured');
-} catch (e) {
-  console.warn('Admin Postgres pool not configured:', e.message);
-}
+// Initialize Supabase/Postgres connection and ensure schema exists
+(async () => {
+  try {
+    const pool = getAdminPool();
+    await pool.query('SELECT 1');
+    console.log('✓ Connected to Supabase/Postgres');
+    
+    // Ensure all required tables exist
+    await ensureAdminSchema();
+    console.log('✓ Database schema ready');
+  } catch (e) {
+    console.error('✗ Database connection failed:', e.message);
+    console.error('  Make sure ADMIN_DATABASE_URL is set correctly');
+  }
+})();
 
 // Public business routes (create/list businesses)
 app.use('/api/businesses', businessRoutes);

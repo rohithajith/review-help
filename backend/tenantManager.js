@@ -1,158 +1,131 @@
 const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
 
-// Tenant manager: reads tenant connection strings from env or tenants.json
-const TENANTS_FILE = path.join(__dirname, 'tenants.json');
-let tenantsConfig = {};
-try {
-  tenantsConfig = JSON.parse(fs.readFileSync(TENANTS_FILE, 'utf8'));
-} catch (e) {
-  tenantsConfig = {};
-}
+/**
+ * Supabase-first Tenant Manager
+ * 
+ * This module manages database connections for the Review App.
+ * It uses a SINGLE shared Postgres database (Supabase) and scopes
+ * data by business_id instead of creating separate tenant databases.
+ * 
+ * Required environment variables:
+ *   ADMIN_DATABASE_URL - Supabase Postgres connection string
+ *                        Example: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres
+ * 
+ * The module automatically handles SSL for Supabase connections.
+ */
 
-const poolCache = new Map();
+let adminPool = null;
 
-function getAdminPool() {
-  // Prefer env var, fallback to tenants.json
-  const conn = process.env.ADMIN_DATABASE_URL || (tenantsConfig.admin && tenantsConfig.admin.connectionString);
-  if (!conn) throw new Error('Admin database connection not configured (set ADMIN_DATABASE_URL or tenants.json)');
-  if (!poolCache.has('admin')) {
-    poolCache.set('admin', new Pool({ connectionString: conn }));
+/**
+ * Parse connection string and determine if SSL should be enabled
+ */
+function getPoolConfig(connectionString) {
+  const config = { connectionString };
+  
+  // Enable SSL for Supabase and other cloud providers
+  // Supabase hostnames contain 'supabase.co'
+  if (connectionString && (
+    connectionString.includes('supabase.co') ||
+    connectionString.includes('sslmode=require') ||
+    connectionString.includes('sslmode=verify-full')
+  )) {
+    config.ssl = { rejectUnauthorized: false };
   }
-  return poolCache.get('admin');
-}
-
-async function getTenantPool(businessId) {
-  const key = `tenant:${businessId}`;
-  if (poolCache.has(key)) return poolCache.get(key);
-
-  // lookup in env: TENANT_DB_URL_<businessId>
-  const envKey = `TENANT_DB_URL_${businessId}`;
-  const conn = process.env[envKey] || (tenantsConfig.tenants && tenantsConfig.tenants[businessId] && tenantsConfig.tenants[businessId].connectionString);
-  if (!conn) return null;
-
-  // Create a pool and test connectivity. If the tenant database doesn't exist,
-  // attempt to create it via createTenantDatabase which will run migrations and seeding.
-  let pool = new Pool({ connectionString: conn });
-  try {
-    await pool.query('SELECT 1');
-    poolCache.set(key, pool);
-    return pool;
-  } catch (err) {
-    try {
-      await pool.end().catch(() => {});
-    } catch (e) {}
-    // Try to create the tenant DB (this will also run migrations/seeds)
-    const createdPool = await createTenantDatabase(conn, businessId);
-    poolCache.set(key, createdPool);
-    return createdPool;
-  }
+  
+  return config;
 }
 
 /**
- * Create or ensure a tenant database exists and return a connected pool.
- * Attempts to connect to the provided tenant connection string. If the
- * database does not exist, it will connect to the server's default
- * database (usually 'postgres') and run CREATE DATABASE <name>.
- * After the DB exists it will run per-tenant migrations and seed defaults.
- * Returns the pooled client for the tenant.
+ * Get the admin/shared database pool.
+ * All queries use this single pool; data is scoped by business_id.
  */
-async function createTenantDatabase(connectionString, aliasKey) {
-  // Try to connect directly first
-  let tenantPool;
-  try {
-    tenantPool = new Pool({ connectionString });
-    // quick test
-    await tenantPool.query('SELECT 1');
-    // run migrations and seed
-    await runTenantMigrations(tenantPool);
-    await seedDefaultTemplates(tenantPool);
-    // cache and return
-    const url = new URL(connectionString);
-    const dbName = url.pathname ? url.pathname.replace(/^\//, '') : '';
-    const key = `tenant:${dbName || connectionString}`;
-    poolCache.set(key, tenantPool);
-    if (aliasKey) {
-      poolCache.set(`tenant:${aliasKey}`, tenantPool);
-    }
-    return tenantPool;
-  } catch (err) {
-    // If connection failed because DB does not exist, attempt to create it
-    // Postgres error code for invalid_catalog_name is 3D000; however, connection
-    // errors may vary. We'll attempt a create using admin connection derived
-    // from the connection string by connecting to the default 'postgres' DB.
-    try {
-      if (tenantPool) {
-        await tenantPool.end().catch(() => {});
-      }
-    } catch (e) {}
-
-    // parse components from connectionString
-    let parsed;
-    try {
-      parsed = new URL(connectionString);
-    } catch (e) {
-      throw new Error('Invalid tenant connection string');
-    }
-
-    const dbName = parsed.pathname ? parsed.pathname.replace(/^\//, '') : null;
-    if (!dbName) throw err; // nothing we can do
-
-    // Build admin-level connection string to 'postgres' database on same host
-    const adminUrl = new URL(connectionString);
-    adminUrl.pathname = '/postgres';
-    const adminConn = adminUrl.toString();
-
-    const adminPool = new Pool({ connectionString: adminConn });
-    try {
-      // create database
-      await adminPool.query(`CREATE DATABASE "${dbName}"`);
-    } catch (createErr) {
-      // if it already exists or other error, rethrow original error
-      await adminPool.end().catch(() => {});
-      throw createErr;
-    }
-    await adminPool.end().catch(() => {});
-
-    // now try to connect again
-    tenantPool = new Pool({ connectionString });
-    await tenantPool.query('SELECT 1');
-    await runTenantMigrations(tenantPool);
-    await seedDefaultTemplates(tenantPool);
-
-    const key = `tenant:${dbName}`;
-    poolCache.set(key, tenantPool);
-    if (aliasKey) {
-      poolCache.set(`tenant:${aliasKey}`, tenantPool);
-    }
-    return tenantPool;
+function getAdminPool() {
+  if (adminPool) return adminPool;
+  
+  const connectionString = process.env.ADMIN_DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      'ADMIN_DATABASE_URL must be set. ' +
+      'For Supabase: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres'
+    );
   }
+  
+  console.info('tenantManager: creating Supabase/Postgres pool');
+  adminPool = new Pool(getPoolConfig(connectionString));
+  
+  // Handle pool errors gracefully
+  adminPool.on('error', (err) => {
+    console.error('Unexpected pool error:', err.message);
+  });
+  
+  return adminPool;
 }
 
-async function runTenantMigrations(pool) {
-  // Minimal migrations: ensure review_templates and archived_templates exist
-  const createTemplates = `
+/**
+ * Ensure all required tables exist in the shared database.
+ * Tables include business_id column for multi-tenant data isolation.
+ */
+async function ensureAdminSchema() {
+  const pool = getAdminPool();
+  
+  // Businesses table (admin registry)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS businesses (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      tenant_connection TEXT,
+      google_review_url TEXT,
+      logo_url TEXT,
+      welcome_message TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  
+  // Review templates (active templates shown to users)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS review_templates (
       id SERIAL PRIMARY KEY,
+      business_id INTEGER,
       text TEXT NOT NULL,
       used BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
-    );
-  `;
-  const createArchived = `
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_review_templates_business_id ON review_templates(business_id)`);
+  
+  // Backup templates (used to refill active pool)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS backup_templates (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER,
+      text TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_backup_templates_business_id ON backup_templates(business_id)`);
+  
+  // Archived templates (used reviews, fed to AI for regeneration)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS archived_templates (
       id SERIAL PRIMARY KEY,
+      business_id INTEGER,
       text TEXT NOT NULL,
       archived_at TIMESTAMP DEFAULT NOW()
-    );
-  `;
-  await pool.query(createTemplates);
-  await pool.query(createArchived);
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_archived_templates_business_id ON archived_templates(business_id)`);
+  
+  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates)');
 }
 
-async function seedDefaultTemplates(pool) {
-  const templates = [
+/**
+ * Seed default templates for a specific business.
+ * This is idempotent - it won't duplicate existing templates.
+ */
+async function seedBusinessTemplates(businessId) {
+  const pool = getAdminPool();
+  
+  const activeTemplates = [
     "Great food and friendly staff — highly recommend this restaurant!",
     "Amazing flavors and great portion sizes. We'll be back soon!",
     "The service was quick and the dishes were delicious. Five stars!",
@@ -163,21 +136,74 @@ async function seedDefaultTemplates(pool) {
     "Fantastic experience — food arrived hot and the server was very friendly.",
     "Delicious desserts and a relaxing ambiance. Great spot for family dinners.",
     "Consistently great meals and friendly staff. Our go-to restaurant now.",
-    "Thanks for visiting! Please leave us a review."
   ];
-
-  try {
-    // Insert any templates that do not already exist (idempotent)
-    for (const t of templates) {
-      const { rows } = await pool.query('SELECT 1 FROM review_templates WHERE text = $1 LIMIT 1', [t]);
-      if (!rows || rows.length === 0) {
-        await pool.query('INSERT INTO review_templates (text, used, created_at) VALUES ($1, false, NOW())', [t]);
-      }
+  
+  const backupTemplates = [
+    "Friendly servers and a lovely vibe — would return for sure.",
+    "Quick service and tasty plates; good value for the price.",
+    "Lovely setting and attentive staff made our meal enjoyable.",
+    "The menu had great variety and everything we tried tasted fresh.",
+    "Warm hospitality and consistent quality — highly recommend this place.",
+    "Perfect spot for casual dinners; portions and flavor were excellent.",
+    "The atmosphere is comfortable and the staff were polite and helpful.",
+    "Service was efficient and the dishes arrived hot and well-seasoned.",
+    "Good pricing and generous portions — ideal for families.",
+    "A memorable meal with excellent service and tasty desserts."
+  ];
+  
+  // Insert active templates (idempotent)
+  for (const text of activeTemplates) {
+    const { rows } = await pool.query(
+      'SELECT 1 FROM review_templates WHERE business_id = $1 AND text = $2 LIMIT 1',
+      [businessId, text]
+    );
+    if (rows.length === 0) {
+      await pool.query(
+        'INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())',
+        [businessId, text]
+      );
     }
-  } catch (e) {
-    // ignore seeding errors; don't crash the startup
-    console.warn('Warning: failed to seed default templates', e && e.message ? e.message : e);
   }
+  
+  // Insert backup templates (idempotent)
+  for (const text of backupTemplates) {
+    const { rows } = await pool.query(
+      'SELECT 1 FROM backup_templates WHERE business_id = $1 AND text = $2 LIMIT 1',
+      [businessId, text]
+    );
+    if (rows.length === 0) {
+      await pool.query(
+        'INSERT INTO backup_templates (business_id, text, created_at) VALUES ($1, $2, NOW())',
+        [businessId, text]
+      );
+    }
+  }
+  
+  console.info(`tenantManager: seeded templates for business_id=${businessId}`);
 }
 
-module.exports = { getTenantPool, getAdminPool, createTenantDatabase };
+// Legacy functions for backward compatibility (deprecated)
+// These are no longer used but kept to avoid breaking imports
+
+async function getTenantPool(businessId) {
+  // In shared DB mode, always return the admin pool
+  return getAdminPool();
+}
+
+async function createTenantDatabase(connectionString, aliasKey) {
+  // No longer creates separate databases; just ensure schema and seed
+  await ensureAdminSchema();
+  if (aliasKey) {
+    await seedBusinessTemplates(aliasKey);
+  }
+  return getAdminPool();
+}
+
+module.exports = {
+  getAdminPool,
+  ensureAdminSchema,
+  seedBusinessTemplates,
+  // Legacy exports (deprecated)
+  getTenantPool,
+  createTenantDatabase,
+};
