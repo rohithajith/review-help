@@ -1,4 +1,8 @@
 const { Pool } = require('pg');
+const dns = require('dns');
+
+// Force IPv4 for DNS resolution (fixes GCP IPv6 connectivity issues with Supabase)
+dns.setDefaultResultOrder('ipv4first');
 
 /**
  * Supabase-first Tenant Manager
