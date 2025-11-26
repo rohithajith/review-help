@@ -1,12 +1,23 @@
 import React from 'react';
-import { Container } from 'react-bootstrap';
+import { Box, Container, Typography } from '@mui/material';
 
 const Footer = () => (
-  <footer className="text-center py-3">
-    <Container>
-      <small>© {new Date().getFullYear()} Review Templates. All rights reserved.</small>
+  <Box
+    component="footer"
+    sx={{
+      bgcolor: 'background.paper',
+      py: 3,
+      mt: 4,
+      borderTop: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    <Container maxWidth="lg">
+      <Typography variant="body2" color="text.secondary" align="center">
+        © {new Date().getFullYear()} Review Templates. All rights reserved.
+      </Typography>
     </Container>
-  </footer>
+  </Box>
 );
 
 export default Footer;

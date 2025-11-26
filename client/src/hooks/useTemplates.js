@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import api from '../api';
 
 /**
  * Custom hook to fetch and manage templates.
@@ -25,18 +26,16 @@ const useTemplates = (businessId) => {
     setLoading(true);
     setError(null);
     try {
-      const apiBase = process.env.REACT_APP_API_URL || '';
-      const url = `${apiBase}/${bizId}/templates`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(text || 'Failed to fetch templates');
-      }
-      const data = await response.json();
-      setTemplates(data);
+      const res = await api.get(`/${bizId}/templates`);
+      const data = res && res.data;
+      // Ensure templates is always an array to avoid runtime errors when the
+      // API returns unexpected payloads (e.g. raw text or HTML). Coerce to []
+      // when the response is not an array.
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message || String(err));
-      setTemplates([]);
+        console.error('useTemplates: failed to fetch templates for business', bizId, err);
+        setError(err.message || String(err));
+        setTemplates([]);
     } finally {
       setLoading(false);
     }

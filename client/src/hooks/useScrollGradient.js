@@ -34,7 +34,7 @@ function lerpColor(c1, c2, t) {
 export default function useScrollGradient(options = {}) {
   const topColor = hexToRgb(options.topColor || '#10B981'); // green
   const middleColor = hexToRgb(options.middleColor || '#F59E0B'); // amber
-  const bottomColor = hexToRgb(options.bottomColor || '#FCA5A5'); // light pink
+  const bottomColor = hexToRgb(options.bottomColor || '#EF4444'); // stronger red at bottom
 
   const [bg, setBg] = useState(rgbToCss(topColor));
   const ticking = useRef(false);
