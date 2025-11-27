@@ -1,123 +1,106 @@
 import React, { useState, useEffect } from 'react';
 import api from './api';
-import { HashRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Route, Routes, useParams, Navigate } from 'react-router-dom';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
-import { Container, Box, Typography, Paper, CircularProgress, Alert } from '@mui/material';
+import { Container, Box, Typography, CircularProgress, Alert, Button } from '@mui/material';
+import SettingsIcon from '@mui/icons-material/Settings';
 import TemplateList from './components/TemplateList';
 import EditModal from './components/EditModal';
 import AdminDashboard from './components/AdminDashboard';
+import BusinessAdmin from './components/BusinessAdmin';
 import './App.css';
 
-function AppInner() {
-  const settings = JSON.parse(localStorage.getItem('settings')) || {};
-  const [selectedBusinessId, setSelectedBusinessId] = useState(settings.businessId || null);
+// Logo mapping for businesses (static logos stored in public/logos/)
+const businessLogos = {
+  2: '/logos/myras-fish-bar.png', // Myra's Fish Bar
+};
+
+// =============================================================================
+// Business Template Page - Each business owner gets their unique URL
+// Example: http://your-domain.com/#/business/2 for Myra's Fish Bar
+// =============================================================================
+function BusinessTemplatePage() {
+  const { businessId } = useParams();
   const [business, setBusiness] = useState(null);
-  const { templates, loading, error, refresh } = useTemplates(selectedBusinessId);
+  const [businessError, setBusinessError] = useState(null);
+  const { templates, loading, error, refresh } = useTemplates(businessId);
   const scrollBg = useScrollGradient();
-  const location = useLocation();
-  const showGradient = !(location.pathname && location.pathname.startsWith('/admin'));
-
-  // Logo mapping for businesses (static logos stored in public/logos/)
-  const businessLogos = {
-    2: '/logos/myras-fish-bar.png', // Myra's Fish Bar
-  };
-
-  useEffect(() => {
-    const initBusiness = async () => {
-      if (selectedBusinessId) {
-        // Fetch business details for the selected business
-        try {
-          const res = await api.get(`/${selectedBusinessId}/business`);
-          setBusiness(res.data || null);
-        } catch (err) {
-          console.error('Error fetching business details', err);
-        }
-        return;
-      }
-      try {
-        const res = await api.get('/businesses');
-        const list = Array.isArray(res && res.data) ? res.data : [];
-        if (list.length > 0) {
-          const firstId = list[0].id;
-          setSelectedBusinessId(firstId);
-          setBusiness(list[0]);
-          const s = JSON.parse(localStorage.getItem('settings')) || {};
-          s.businessId = firstId;
-          localStorage.setItem('settings', JSON.stringify(s));
-        }
-      } catch (err) {
-        console.error('App: error during initBusiness fetch /businesses', err);
-      }
-    };
-    initBusiness();
-  }, [selectedBusinessId]);
-
   const [editingTemplate, setEditingTemplate] = useState(null);
 
-  const handleEdit = (template) => setEditingTemplate(template);
-  const handleSave = async (updatedTemplate) => {
-    // persist changes to API if possible, then close editor locally
-    try {
-      const settings = JSON.parse(localStorage.getItem('settings')) || {};
-      const bizId = settings.businessId || selectedBusinessId;
-      if (bizId && updatedTemplate && updatedTemplate.id) {
-        await api.put(`/${bizId}/templates/${updatedTemplate.id}`, { text: updatedTemplate.text });
-      }
+  // Fetch business details when businessId changes
+  useEffect(() => {
+    const fetchBusiness = async () => {
+      if (!businessId) return;
+      try {
+        const res = await api.get(`/${businessId}/business`);
+        setBusiness(res.data || null);
+        setBusinessError(null);
       } catch (err) {
-      console.error('Failed to save template from EditModal', err);
+        console.error('Error fetching business details', err);
+        setBusinessError('Business not found');
+      }
+    };
+    fetchBusiness();
+  }, [businessId]);
+
+  const handleEdit = (template) => setEditingTemplate(template);
+  
+  const handleSave = async (updatedTemplate) => {
+    try {
+      if (businessId && updatedTemplate && updatedTemplate.id) {
+        await api.put(`/${businessId}/templates/${updatedTemplate.id}`, { text: updatedTemplate.text });
+      }
+    } catch (err) {
+      console.error('Failed to save template', err);
     } finally {
       try {
-        if (typeof refresh === 'function') await refresh(selectedBusinessId);
+        if (typeof refresh === 'function') await refresh(businessId);
       } catch (refreshErr) {
-        console.error('Error refreshing templates after save', refreshErr);
+        console.error('Error refreshing templates', refreshErr);
       }
       setEditingTemplate(null);
     }
   };
-  const handleCopyAndLeaveReview = async (template) => {
-    const settings = JSON.parse(localStorage.getItem('settings')) || {};
-    const bizId = settings.businessId || selectedBusinessId;
 
+  const handleCopyAndLeaveReview = async (template) => {
     try {
-      // Call backend archive+rotate endpoint which saves modifiedText into archived_templates,
-      // removes the active template and rotates in one from backup_templates.
-      if (bizId && template && template.id) {
-        await api.post(`/${bizId}/templates/${template.id}/use`, { modifiedText: template.text });
-        // refresh templates so UI reflects rotation
-        if (typeof refresh === 'function') await refresh(bizId);
+      // Archive template and rotate in a new one from backups
+      if (businessId && template && template.id) {
+        await api.post(`/${businessId}/templates/${template.id}/use`, { modifiedText: template.text });
+        if (typeof refresh === 'function') await refresh(businessId);
       }
     } catch (err) {
-      console.error('Error archiving template before copy/review', err);
-      // If archive fails, surface a simple alert and abort copy/review
-      try { alert('Could not save your changes for archiving. Please try again.'); } catch (e) {}
+      console.error('Error archiving template', err);
+      alert('Could not save your changes. Please try again.');
       return;
     }
 
-    // copy text and open review URL after successful archive/rotation
-    try { await navigator.clipboard.writeText(template.text); } catch (e) { /* ignore clipboard errors */ }
+    // Copy text to clipboard
+    try { await navigator.clipboard.writeText(template.text); } catch (e) {}
 
-    const platform = (() => {
-      try { return sessionStorage.getItem('preferredReviewPlatform'); } catch (e) { return null; }
-    })();
-
-    let url = null;
-    if (platform === 'booking') {
-      const q = encodeURIComponent(settings.businessName || template.businessName || '');
-      url = `https://www.booking.com/searchresults.html?ss=${q}`;
-    } else {
-      url = settings.googleReviewUrl || template.google_review_url || `https://www.google.com/search?q=${encodeURIComponent(settings.businessName || '')}+reviews`;
-    }
-
+    // Open Google review URL for this business
+    const url = business?.google_review_url || 
+      `https://www.google.com/search?q=${encodeURIComponent(business?.name || '')}+reviews`;
     if (url) window.open(url, '_blank');
   };
 
+  // Loading state
   if (loading) return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
       <CircularProgress color="primary" />
     </Box>
   );
+  
+  // Business not found
+  if (businessError) return (
+    <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" p={2}>
+      <Alert severity="error">{businessError}</Alert>
+    </Box>
+  );
+  
+  // API error
   if (error) return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" p={2}>
       <Alert severity="error">Error: {error}</Alert>
@@ -129,16 +112,17 @@ function AppInner() {
       className="App" 
       sx={{ 
         minHeight: '100vh',
-        ...(showGradient ? { background: scrollBg, transition: 'background 300ms linear' } : {})
+        background: scrollBg, 
+        transition: 'background 300ms linear'
       }}
     >
       <Container maxWidth="lg" sx={{ py: 3 }}>
-        {/* Only show the logo header on non-admin routes when business has a logo */}
-        {!location.pathname.startsWith('/admin') && selectedBusinessId && businessLogos[selectedBusinessId] && (
+        {/* Business Logo and Welcome Message */}
+        {businessLogos[businessId] && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', justifyContent: 'center', mb: 4 }}>
             <Box
               component="img"
-              src={businessLogos[selectedBusinessId]}
+              src={businessLogos[businessId]}
               alt={business?.name || 'Business Logo'}
               sx={{
                 height: { xs: 80, md: 100 },
@@ -154,26 +138,51 @@ function AppInner() {
           </Box>
         )}
 
-        <Routes>
-          <Route path="/" exact element={
-            <Box>
-              <TemplateList
-                templates={templates}
-                onEdit={handleEdit}
-                onCopyAndLeaveReview={handleCopyAndLeaveReview}
-              />
-              {editingTemplate && (
-                <EditModal
-                  template={editingTemplate}
-                  onClose={() => setEditingTemplate(null)}
-                  onSave={handleSave}
-                  onCopyAndLeaveReview={handleCopyAndLeaveReview}
-                />
-              )}
-            </Box>
-          } />
-          <Route path="/admin" element={<AdminDashboard />} />
-        </Routes>
+        {/* Business Name Header (if no logo configured) */}
+        {!businessLogos[businessId] && business?.name && (
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <Typography variant="h4" color="primary">
+              {business.name}
+            </Typography>
+            {business?.welcome_message && (
+              <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+                {business.welcome_message}
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {/* Admin Button - small, unobtrusive */}
+        <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<SettingsIcon />}
+            onClick={() => window.location.hash = `#/business/${businessId}/admin`}
+            sx={{ 
+              opacity: 0.7, 
+              '&:hover': { opacity: 1 },
+              backgroundColor: 'rgba(255,255,255,0.9)',
+            }}
+          >
+            Admin
+          </Button>
+        </Box>
+
+        <TemplateList
+          templates={templates}
+          onEdit={handleEdit}
+          onCopyAndLeaveReview={handleCopyAndLeaveReview}
+        />
+        
+        {editingTemplate && (
+          <EditModal
+            template={editingTemplate}
+            onClose={() => setEditingTemplate(null)}
+            onSave={handleSave}
+            onCopyAndLeaveReview={handleCopyAndLeaveReview}
+          />
+        )}
 
         <Footer />
       </Container>
@@ -181,10 +190,35 @@ function AppInner() {
   );
 }
 
+// =============================================================================
+// Business Admin Page Wrapper
+// =============================================================================
+function BusinessAdminPage() {
+  const { businessId } = useParams();
+  return <BusinessAdmin businessId={businessId} />;
+}
+
+// =============================================================================
+// Main App Router
+// =============================================================================
 export default function App() {
   return (
     <Router>
-      <AppInner />
+      <Routes>
+        {/* Business-specific template page - give this URL to customers */}
+        {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
+        <Route path="/business/:businessId" element={<BusinessTemplatePage />} />
+        
+        {/* Business-specific admin - give this URL to business owners */}
+        {/* Example: http://localhost:3000/#/business/2/admin for Myra's admin */}
+        <Route path="/business/:businessId/admin" element={<BusinessAdminPage />} />
+        
+        {/* Super admin dashboard - for you to manage all businesses */}
+        <Route path="/admin" element={<AdminDashboard />} />
+        
+        {/* Default: redirect to admin dashboard */}
+        <Route path="/" element={<Navigate to="/admin" replace />} />
+      </Routes>
     </Router>
   );
 }
