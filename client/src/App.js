@@ -21,7 +21,7 @@ function AppInner() {
 
   // Logo mapping for businesses (static logos stored in public/logos/)
   const businessLogos = {
-    3: '/logos/myras-fish-bar.png', // Myra's Fish Bar
+    2: '/logos/myras-fish-bar.png', // Myra's Fish Bar
   };
 
   useEffect(() => {

@@ -63,3 +63,49 @@ exports.getBusiness = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.updateBusiness = async (req, res, next) => {
+  const businessId = req.businessId || req.params.businessId;
+  const { name, google_review_url, logo_url, welcome_message } = req.body;
+  
+  try {
+    const pool = getAdminPool();
+    
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (google_review_url !== undefined) {
+      updates.push(`google_review_url = $${paramCount++}`);
+      values.push(google_review_url);
+    }
+    if (logo_url !== undefined) {
+      updates.push(`logo_url = $${paramCount++}`);
+      values.push(logo_url);
+    }
+    if (welcome_message !== undefined) {
+      updates.push(`welcome_message = $${paramCount++}`);
+      values.push(welcome_message);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    values.push(businessId);
+    const sql = `UPDATE businesses SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+    
+    const { rows } = await pool.query(sql, values);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+};
