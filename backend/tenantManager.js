@@ -118,6 +118,29 @@ async function ensureAdminSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_archived_templates_business_id ON archived_templates(business_id)`);
+
+  // Users table for business owners (Supabase auth users are referenced by UUID)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY,
+      email TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Mapping of business owners (many-to-many) and roles
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS business_owners (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL,
+      user_id UUID NOT NULL,
+      role TEXT DEFAULT 'owner',
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (business_id, user_id)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_business_id ON business_owners(business_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_user_id ON business_owners(user_id)`);
   
   console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates)');
 }

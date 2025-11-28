@@ -25,10 +25,22 @@ exports.createBusiness = async (req, res, next) => {
     );
     
     const businessId = result.rows[0].id;
-    
     // Seed default templates for this business
     await seedBusinessTemplates(businessId);
-    
+
+    // If request is authenticated, map the creating user as owner
+    try {
+      const userId = req.userId;
+      if (userId) {
+        // Ensure user exists in users table (idempotent)
+        await pool.query('INSERT INTO users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email', [userId, (req.user && req.user.email) || null]);
+        // Map to business_owners
+        await pool.query('INSERT INTO business_owners (business_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (business_id, user_id) DO NOTHING', [businessId, userId, 'owner']);
+      }
+    } catch (mapErr) {
+      console.warn('Failed to assign owner mapping for new business:', mapErr && mapErr.message ? mapErr.message : mapErr);
+    }
+
     res.status(201).json({ id: businessId, name });
   } catch (err) {
     next(err);
