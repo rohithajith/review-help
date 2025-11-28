@@ -5,6 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const templatesRoutes = require('./routes/templatesRoutes');
 const businessRoutes = require('./routes/businessRoutes');
+const userRoutes = require('./routes/userRoutes');
+const logsRoutes = require('./routes/logsRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
@@ -58,6 +60,12 @@ if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
 
 // Public business routes (create/list businesses)
 app.use('/api/businesses', businessRoutes);
+
+// User routes (onboarding, profile sync)
+app.use('/api/users', userRoutes);
+
+// Client error logs ingestion (POST) and retrieval (GET)
+app.use('/api/_client-log', logsRoutes);
 
 // Tenant-scoped routes mounted under /api/:businessId
 app.use('/api/:businessId', businessMiddleware, templatesRoutes);

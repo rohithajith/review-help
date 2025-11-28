@@ -24,6 +24,10 @@ router.put('/business', asyncHandler(businessController.updateBusiness));
 // Mark a template as used
 router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.markTemplateAsUsed));
 
+// Create a dummy owner for development/testing (creates Supabase user + maps to business)
+// Guarded: only allowed when ALLOW_DUMMY_OWNER=true or NODE_ENV != 'production'
+router.post('/owners/dummy', asyncHandler(businessController.createDummyOwner));
+
 // Get all used templates (admin feature)
 router.get('/templates/used', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getUsedTemplates));
 

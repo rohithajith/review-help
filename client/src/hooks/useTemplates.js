@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 
 /**
@@ -14,9 +14,10 @@ const useTemplates = (businessId) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchTemplates = async (bizId = businessId) => {
+  const fetchTemplates = useCallback(async (bizIdOverride) => {
+    const targetBusinessId = bizIdOverride || businessId;
     // if no businessId provided, do nothing and clear state
-    if (!bizId) {
+    if (!targetBusinessId) {
       setTemplates([]);
       setError(null);
       setLoading(false);
@@ -26,20 +27,20 @@ const useTemplates = (businessId) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/${bizId}/templates`);
+      const res = await api.get(`/${targetBusinessId}/templates`);
       const data = res && res.data;
       // Ensure templates is always an array to avoid runtime errors when the
       // API returns unexpected payloads (e.g. raw text or HTML). Coerce to []
       // when the response is not an array.
       setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
-        console.error('useTemplates: failed to fetch templates for business', bizId, err);
+        console.error('useTemplates: failed to fetch templates for business', targetBusinessId, err);
         setError(err.message || String(err));
         setTemplates([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessId]);
 
   useEffect(() => {
     // when businessId changes, attempt fetch; do not include fetchTemplates in
@@ -51,7 +52,7 @@ const useTemplates = (businessId) => {
       setError(null);
       setLoading(false);
     }
-  }, [businessId]);
+  }, [businessId, fetchTemplates]);
 
   return { templates, loading, error, refresh: fetchTemplates };
 };

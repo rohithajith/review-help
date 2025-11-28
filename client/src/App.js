@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from './api';
 import { HashRouter as Router, Route, Routes, useParams, Navigate } from 'react-router-dom';
+import Login from './components/Login';
+import Landing from './components/Landing';
+import Pricing from './components/Pricing';
+import Contact from './components/Contact';
+import Signup from './components/Signup';
+import NavBar from './components/Navbar';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
@@ -202,9 +208,24 @@ function BusinessAdminPage() {
 // Main App Router
 // =============================================================================
 export default function App() {
+  // On app start, apply any saved access token to the API client
+  React.useEffect(() => {
+    try {
+      const token = localStorage.getItem('supabase_access_token');
+      if (token && api && api.defaults) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } catch (e) {
+      // ignore
+    }
+  }, []);
   return (
     <Router>
+      <NavBar />
       <Routes>
+        {/* Public pages */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/signup" element={<Signup />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />
@@ -215,9 +236,11 @@ export default function App() {
         
         {/* Super admin dashboard - for you to manage all businesses */}
         <Route path="/admin" element={<AdminDashboard />} />
+        {/* Simple login route for business owners */}
+        <Route path="/login" element={<Login />} />
         
-        {/* Default: redirect to admin dashboard */}
-        <Route path="/" element={<Navigate to="/admin" replace />} />
+        {/* Catch-all: redirect unknown hashes to landing */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
