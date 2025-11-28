@@ -24,19 +24,34 @@ import {
   IconButton,
   Snackbar,
   Chip,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CloseIcon from '@mui/icons-material/Close';
+import LogoutIcon from '@mui/icons-material/Logout';
 import api from '../api';
+import BusinessLoginModal from './BusinessLoginModal';
 
 // =============================================================================
 // BusinessAdmin - A simplified admin panel for business owners
 // Only shows templates for their specific business, no access to other data
+// Requires authentication via login modal
 // =============================================================================
 const BusinessAdmin = ({ businessId }) => {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [hasCredentials, setHasCredentials] = useState(null);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [setupUsername, setSetupUsername] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupError, setSetupError] = useState('');
+
+  // Business and template state
   const [business, setBusiness] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [backupTemplates, setBackupTemplates] = useState([]);
@@ -48,6 +63,101 @@ const BusinessAdmin = ({ businessId }) => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
   const [loading, setLoading] = useState(true);
+
+  // Check if already authenticated (has valid session token)
+  useEffect(() => {
+    const checkAuth = async () => {
+      setCheckingAuth(true);
+      
+      // Check for existing session token
+      const token = sessionStorage.getItem(`business_admin_token_${businessId}`);
+      if (token) {
+        // Token exists, consider authenticated (simple validation)
+        setIsAuthenticated(true);
+        setCheckingAuth(false);
+        return;
+      }
+
+      // Check if business has credentials configured
+      try {
+        const response = await api.get(`/businesses/${businessId}/admin/has-credentials`);
+        setHasCredentials(response.data.hasCredentials);
+        
+        if (response.data.hasCredentials) {
+          // Has credentials, show login modal
+          setShowLoginModal(true);
+        } else {
+          // No credentials, show setup modal
+          setShowSetupModal(true);
+        }
+      } catch (err) {
+        console.error('Error checking credentials:', err);
+        // Default to showing login
+        setShowLoginModal(true);
+      }
+      
+      setCheckingAuth(false);
+    };
+
+    if (businessId) checkAuth();
+  }, [businessId]);
+
+  // Handle successful login
+  const handleLoginSuccess = (token) => {
+    setIsAuthenticated(true);
+    setShowLoginModal(false);
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    sessionStorage.removeItem(`business_admin_token_${businessId}`);
+    setIsAuthenticated(false);
+    window.location.hash = `#/business/${businessId}`;
+  };
+
+  // Handle credential setup
+  const handleSetupCredentials = async () => {
+    setSetupError('');
+    
+    if (!setupUsername.trim() || !setupPassword) {
+      setSetupError('Please enter both username and password');
+      return;
+    }
+    
+    if (setupPassword.length < 4) {
+      setSetupError('Password must be at least 4 characters');
+      return;
+    }
+
+    try {
+      await api.post(`/businesses/${businessId}/admin/credentials`, {
+        username: setupUsername.trim(),
+        password: setupPassword,
+      });
+
+      // Auto-login after setup
+      const loginResponse = await api.post(`/businesses/${businessId}/admin/login`, {
+        username: setupUsername.trim(),
+        password: setupPassword,
+      });
+
+      if (loginResponse.data.success) {
+        sessionStorage.setItem(`business_admin_token_${businessId}`, loginResponse.data.token);
+        setIsAuthenticated(true);
+        setShowSetupModal(false);
+        setAlertMessage('Admin credentials created successfully!');
+        setAlertVariant('success');
+      }
+    } catch (err) {
+      console.error('Error setting up credentials:', err);
+      setSetupError(err.response?.data?.error || 'Failed to set up credentials');
+    }
+  };
+
+  // Handle cancel (go back to business page)
+  const handleCancel = () => {
+    window.location.hash = `#/business/${businessId}`;
+  };
 
   // Fetch business details
   const fetchBusiness = useCallback(async () => {
@@ -82,12 +192,13 @@ const BusinessAdmin = ({ businessId }) => {
   // Load all data on mount
   useEffect(() => {
     const loadData = async () => {
+      if (!isAuthenticated) return;
       setLoading(true);
       await Promise.all([fetchBusiness(), fetchTemplates(), fetchBackups()]);
       setLoading(false);
     };
-    if (businessId) loadData();
-  }, [businessId, fetchBusiness, fetchTemplates, fetchBackups]);
+    if (businessId && isAuthenticated) loadData();
+  }, [businessId, isAuthenticated, fetchBusiness, fetchTemplates, fetchBackups]);
 
   // Create template handler
   const handleCreateTemplate = async () => {
@@ -151,10 +262,104 @@ const BusinessAdmin = ({ businessId }) => {
     }
   };
 
+  // Show loading spinner while checking auth
+  if (checkingAuth) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography sx={{ mt: 2 }}>Checking authentication...</Typography>
+      </Container>
+    );
+  }
+
+  // Show login modal if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <>
+        <BusinessLoginModal
+          open={showLoginModal}
+          businessId={businessId}
+          businessName={business?.name}
+          onClose={handleCancel}
+          onLoginSuccess={handleLoginSuccess}
+        />
+
+        {/* Setup credentials modal for first-time access */}
+        <Dialog 
+          open={showSetupModal} 
+          onClose={handleCancel}
+          maxWidth="xs" 
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 3 }
+          }}
+        >
+          <DialogTitle sx={{ textAlign: 'center', pt: 3 }}>
+            <IconButton
+              onClick={handleCancel}
+              sx={{ position: 'absolute', right: 8, top: 8, color: 'grey.500' }}
+            >
+              <CloseIcon />
+            </IconButton>
+            <Typography variant="h5" fontWeight={600}>
+              Set Up Admin Access
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Create admin credentials for this business
+            </Typography>
+          </DialogTitle>
+          
+          <DialogContent sx={{ pt: 2 }}>
+            {setupError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {setupError}
+              </Alert>
+            )}
+            
+            <TextField
+              fullWidth
+              label="Username"
+              value={setupUsername}
+              onChange={(e) => setSetupUsername(e.target.value)}
+              sx={{ mb: 2 }}
+              autoFocus
+            />
+            
+            <TextField
+              fullWidth
+              label="Password"
+              type="password"
+              value={setupPassword}
+              onChange={(e) => setSetupPassword(e.target.value)}
+              helperText="At least 4 characters"
+            />
+          </DialogContent>
+          
+          <DialogActions sx={{ p: 3, pt: 1, flexDirection: 'column', gap: 1 }}>
+            <Button
+              variant="contained"
+              fullWidth
+              size="large"
+              onClick={handleSetupCredentials}
+              disabled={!setupUsername.trim() || setupPassword.length < 4}
+              sx={{ py: 1.5, borderRadius: 2 }}
+            >
+              Create Admin Account
+            </Button>
+            <Button variant="text" onClick={handleCancel}>
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </>
+    );
+  }
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4, textAlign: 'center' }}>
-        <Typography>Loading...</Typography>
+        <CircularProgress />
+        <Typography sx={{ mt: 2 }}>Loading...</Typography>
       </Container>
     );
   }
@@ -198,6 +403,15 @@ const BusinessAdmin = ({ businessId }) => {
           {business.name} - Admin
         </Typography>
         <Chip label="Business Admin" color="primary" />
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          size="small"
+        >
+          Logout
+        </Button>
       </Box>
 
       <Grid container spacing={3}>

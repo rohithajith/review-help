@@ -6,6 +6,48 @@ This document records issues encountered during development and their solutions 
 
 ## 2025-11-28
 
+### Feature: Customizable Review Platforms
+
+**Requirement:**
+Allow admins to configure which review platforms (Google, Booking.com, TripAdvisor, etc.) are shown to customers when they copy a review.
+
+**Implementation:**
+
+1. **Database Schema** (`backend/tenantManager.js`):
+   - Added `review_platforms JSONB` column to `businesses` table
+   - Default value: `[{"name": "Google", "url": ""}, {"name": "Booking.com", "url": ""}]`
+   - Migration handles existing databases automatically
+
+2. **Backend API** (`backend/controllers/businessController.js`):
+   - `GET /api/:businessId/business` now returns `review_platforms`
+   - `PUT /api/:businessId/business` accepts `review_platforms` array
+
+3. **Admin Dashboard** (`client/src/components/AdminDashboard.js`):
+   - New "Review Platforms" section with:
+     - Dynamic list of platform name/URL fields
+     - Add/Remove platform buttons
+     - Test link buttons
+   - Settings are saved to database on "Save Settings"
+
+4. **Customer Modal** (`client/src/components/EditModal.js`):
+   - Receives `reviewPlatforms` prop
+   - If multiple platforms with URLs → shows choice dialog
+   - If single platform → opens directly
+   - If no platforms → uses fallback google_review_url
+
+**API Example:**
+```bash
+# Update review platforms
+curl -X PUT http://localhost:3001/api/2/business \
+  -H "Content-Type: application/json" \
+  -d '{"review_platforms": [
+    {"name": "Google", "url": "https://google.com/review/business"},
+    {"name": "TripAdvisor", "url": "https://tripadvisor.com/review"}
+  ]}'
+```
+
+---
+
 ### Issue #1: Blank Page - React App Not Rendering
 
 **Symptoms:**

@@ -6,6 +6,48 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2025-11-28
 
+### Added
+
+#### Business Admin Authentication
+- **New Feature**: Business admin pages now require login authentication
+- Added `business_admin_credentials` table to store hashed passwords (bcrypt)
+- First-time access shows a "Set Up Admin Access" modal for the business owner
+- Subsequent access requires username/password login
+- Session tokens stored in sessionStorage (cleared when browser closes)
+- Logout button added to BusinessAdmin header
+- **Super Admin Dashboard** now includes:
+  - "Business Admin Access" card when a business is selected
+  - Set/Reset credentials for any business
+  - Copy admin URL button
+  - Open admin page button
+  - Status indicator (Credentials Set / Not Configured)
+- **Files changed**:
+  - `backend/tenantManager.js` - Added business_admin_credentials table
+  - `backend/controllers/businessController.js` - Added setAdminCredentials, verifyAdminLogin, hasAdminCredentials
+  - `backend/routes/businessRoutes.js` - Added auth endpoints
+  - `client/src/components/BusinessLoginModal.js` - New login modal component
+  - `client/src/components/BusinessAdmin.js` - Auth wrapper and logout
+  - `client/src/components/AdminDashboard.js` - Credentials management UI
+
+#### Customizable Review Platforms Feature
+- **New Feature**: Admins can now configure custom review platforms (Google, Booking.com, TripAdvisor, or any custom platform)
+- Added `review_platforms` JSONB column to the `businesses` table
+- Admin Dashboard now has a "Review Platforms" section where you can:
+  - Add new review platforms with custom names and URLs
+  - Edit existing platform names and URLs
+  - Remove platforms (minimum 1 required)
+  - Test links directly from the admin panel
+- When customers click "Copy & Review":
+  - If multiple platforms are configured, they see a choice dialog
+  - If only one platform is configured, it opens directly
+  - Platforms without URLs are hidden from customers
+- **Files changed**:
+  - `backend/tenantManager.js` - Added review_platforms column
+  - `backend/controllers/businessController.js` - Handle review_platforms in CRUD
+  - `client/src/components/AdminDashboard.js` - Platform editor UI
+  - `client/src/components/EditModal.js` - Platform selection dialog
+  - `client/src/App.js` - Pass platforms to EditModal
+
 ### Fixed
 
 #### Blank Page Issue - Supabase Client Crash

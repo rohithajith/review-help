@@ -70,7 +70,7 @@ function BusinessTemplatePage() {
     }
   };
 
-  const handleCopyAndLeaveReview = async (template) => {
+  const handleCopyAndLeaveReview = async (template, platformUrl = null) => {
     try {
       // Archive template and rotate in a new one from backups
       if (businessId && template && template.id) {
@@ -86,8 +86,8 @@ function BusinessTemplatePage() {
     // Copy text to clipboard
     try { await navigator.clipboard.writeText(template.text); } catch (e) {}
 
-    // Open Google review URL for this business
-    const url = business?.google_review_url || 
+    // Open the specified platform URL, or fallback to google_review_url, or search
+    const url = platformUrl || business?.google_review_url || 
       `https://www.google.com/search?q=${encodeURIComponent(business?.name || '')}+reviews`;
     if (url) window.open(url, '_blank');
   };
@@ -187,6 +187,7 @@ function BusinessTemplatePage() {
             onClose={() => setEditingTemplate(null)}
             onSave={handleSave}
             onCopyAndLeaveReview={handleCopyAndLeaveReview}
+            reviewPlatforms={business?.review_platforms || []}
           />
         )}
 

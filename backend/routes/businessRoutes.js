@@ -12,4 +12,17 @@ router.post('/', authMiddleware, asyncHandler(businessController.createBusiness)
 // List all businesses
 router.get('/', asyncHandler(businessController.listBusinesses));
 
+// =============================================================================
+// Business Admin Authentication Routes
+// =============================================================================
+
+// Check if business has admin credentials configured
+router.get('/:businessId/admin/has-credentials', asyncHandler(businessController.hasAdminCredentials));
+
+// Set/update admin credentials for a business
+router.post('/:businessId/admin/credentials', asyncHandler(businessController.setAdminCredentials));
+
+// Verify admin login
+router.post('/:businessId/admin/login', asyncHandler(businessController.verifyAdminLogin));
+
 module.exports = router;

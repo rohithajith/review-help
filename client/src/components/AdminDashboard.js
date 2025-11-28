@@ -28,6 +28,9 @@ import {
   MenuItem,
   IconButton,
   Snackbar,
+  Divider,
+  Chip,
+  InputAdornment,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -36,8 +39,18 @@ import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
+import LockIcon from '@mui/icons-material/Lock';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import api from '../api';
 import LogsViewer from './LogsViewer';
+
+// Default review platforms
+const DEFAULT_REVIEW_PLATFORMS = [
+  { name: 'Google', url: '' },
+  { name: 'Booking.com', url: '' },
+];
 
 const AdminDashboard = () => {
   const [templates, setTemplates] = useState([]);
@@ -55,8 +68,16 @@ const AdminDashboard = () => {
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
+
+  // Admin credentials state
+  const [hasAdminCredentials, setHasAdminCredentials] = useState(false);
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
 
 
   const fetchTemplates = useCallback(async (bizId = selectedBusinessId) => {
@@ -130,7 +151,17 @@ const AdminDashboard = () => {
         setBusinessName(biz.name || '');
         setGoogleReviewUrl(biz.google_review_url || '');
         setWelcomeMessage(biz.welcome_message || '');
+        setReviewPlatforms(biz.review_platforms || DEFAULT_REVIEW_PLATFORMS);
         fetchTemplates(bizId);
+
+        // Check if admin credentials exist for this business
+        try {
+          const credRes = await api.get(`/businesses/${bizId}/admin/has-credentials`);
+          setHasAdminCredentials(credRes.data.hasCredentials);
+        } catch (err) {
+          console.error('Error checking admin credentials:', err);
+          setHasAdminCredentials(false);
+        }
       } catch (err) {
         console.error('Error loading business details', err);
       }
@@ -141,21 +172,94 @@ const AdminDashboard = () => {
     }
   }, [selectedBusinessId, fetchTemplates]);
 
+  // Save admin credentials handler
+  const handleSaveAdminCredentials = async () => {
+    if (!adminUsername.trim() || !adminPassword) {
+      setAlertMessage('Username and password are required');
+      setAlertVariant('danger');
+      return;
+    }
+
+    if (adminPassword.length < 4) {
+      setAlertMessage('Password must be at least 4 characters');
+      setAlertVariant('danger');
+      return;
+    }
+
+    try {
+      await api.post(`/businesses/${selectedBusinessId}/admin/credentials`, {
+        username: adminUsername.trim(),
+        password: adminPassword,
+      });
+
+      setHasAdminCredentials(true);
+      setShowCredentialsModal(false);
+      setAlertMessage('Admin credentials saved successfully');
+      setAlertVariant('success');
+    } catch (err) {
+      console.error('Error saving admin credentials:', err);
+      setAlertMessage(err.response?.data?.error || 'Error saving credentials');
+      setAlertVariant('danger');
+    }
+  };
+
+  // Copy admin URL to clipboard
+  const handleCopyAdminUrl = () => {
+    const url = `${window.location.origin}/#/business/${selectedBusinessId}/admin`;
+    navigator.clipboard.writeText(url);
+    setAlertMessage('Admin URL copied to clipboard');
+    setAlertVariant('success');
+  };
+
   // whenever selected business changes also load backups
   useEffect(() => {
     if (selectedBusinessId) fetchBackups(selectedBusinessId);
   }, [selectedBusinessId, fetchBackups]);
 
-  const saveSettings = () => {
-    const settings = {
-      googleReviewUrl,
-      businessName,
-      welcomeMessage,
-      businessId: selectedBusinessId
-    };
-    localStorage.setItem('settings', JSON.stringify(settings));
-    setAlertMessage('Settings saved successfully');
-    setAlertVariant('success');
+  const saveSettings = async () => {
+    try {
+      // Save to backend
+      if (selectedBusinessId) {
+        await api.put(`/${selectedBusinessId}/business`, {
+          name: businessName,
+          google_review_url: googleReviewUrl,
+          welcome_message: welcomeMessage,
+          review_platforms: reviewPlatforms,
+        });
+      }
+      // Also save to localStorage for quick access
+      const settings = {
+        googleReviewUrl,
+        businessName,
+        welcomeMessage,
+        reviewPlatforms,
+        businessId: selectedBusinessId
+      };
+      localStorage.setItem('settings', JSON.stringify(settings));
+      setAlertMessage('Settings saved successfully');
+      setAlertVariant('success');
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      setAlertMessage('Error saving settings');
+      setAlertVariant('danger');
+    }
+  };
+
+  // Review Platform handlers
+  const handlePlatformChange = (index, field, value) => {
+    const updated = [...reviewPlatforms];
+    updated[index] = { ...updated[index], [field]: value };
+    setReviewPlatforms(updated);
+  };
+
+  const handleAddPlatform = () => {
+    setReviewPlatforms([...reviewPlatforms, { name: '', url: '' }]);
+  };
+
+  const handleRemovePlatform = (index) => {
+    if (reviewPlatforms.length > 1) {
+      setReviewPlatforms(reviewPlatforms.filter((_, i) => i !== index));
+    }
   };
 
   const handleCreateTemplate = async () => {
@@ -356,6 +460,75 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
+          {/* Admin Credentials Card */}
+          {selectedBusinessId && (
+            <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+              <CardHeader
+                title={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LockIcon fontSize="small" />
+                    Business Admin Access
+                  </Box>
+                }
+                sx={{
+                  background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
+                  '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
+                }}
+              />
+              <CardContent>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Set up login credentials for the business owner to access their admin panel.
+                </Typography>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Typography variant="body2">
+                    Status:
+                  </Typography>
+                  {hasAdminCredentials ? (
+                    <Chip label="Credentials Set" color="success" size="small" />
+                  ) : (
+                    <Chip label="Not Configured" color="warning" size="small" />
+                  )}
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<LockIcon />}
+                    onClick={() => {
+                      setAdminUsername('');
+                      setAdminPassword('');
+                      setShowPassword(false);
+                      setShowCredentialsModal(true);
+                    }}
+                  >
+                    {hasAdminCredentials ? 'Reset Credentials' : 'Set Credentials'}
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    startIcon={<ContentCopyIcon />}
+                    onClick={handleCopyAdminUrl}
+                  >
+                    Copy Admin URL
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    startIcon={<OpenInNewIcon />}
+                    onClick={() => window.open(`${window.location.origin}/#/business/${selectedBusinessId}/admin`, '_blank')}
+                  >
+                    Open Admin Page
+                  </Button>
+                </Box>
+
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                  Admin URL: {window.location.origin}/#/business/{selectedBusinessId}/admin
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Templates Card */}
           <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
             <CardHeader
@@ -508,25 +681,6 @@ const AdminDashboard = () => {
             <CardContent>
               <TextField
                 fullWidth
-                label="Google Review URL"
-                type="url"
-                value={googleReviewUrl}
-                onChange={e => setGoogleReviewUrl(e.target.value)}
-                sx={{ mb: 2 }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open(googleReviewUrl, '_blank')}
-                sx={{ mb: 3 }}
-              >
-                Test Link
-              </Button>
-
-              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 2 }} />
-
-              <TextField
-                fullWidth
                 label="Business Name"
                 value={businessName}
                 onChange={e => setBusinessName(e.target.value)}
@@ -543,6 +697,89 @@ const AdminDashboard = () => {
                 sx={{ mb: 2 }}
               />
 
+              <Divider sx={{ my: 3 }} />
+
+              {/* Review Platforms Section */}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Review Platforms
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Configure the review platforms shown to customers. Add your own or edit the defaults.
+              </Typography>
+
+              {reviewPlatforms.map((platform, index) => (
+                <Box key={index} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-start' }}>
+                  <TextField
+                    size="small"
+                    label="Platform Name"
+                    value={platform.name}
+                    onChange={e => handlePlatformChange(index, 'name', e.target.value)}
+                    sx={{ width: '30%' }}
+                    placeholder="e.g., Google, TripAdvisor"
+                  />
+                  <TextField
+                    size="small"
+                    label="Review URL"
+                    value={platform.url}
+                    onChange={e => handlePlatformChange(index, 'url', e.target.value)}
+                    sx={{ flexGrow: 1 }}
+                    placeholder="https://..."
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => window.open(platform.url, '_blank')}
+                    disabled={!platform.url}
+                    title="Test Link"
+                  >
+                    <OpenInNewIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleRemovePlatform(index)}
+                    disabled={reviewPlatforms.length <= 1}
+                    title="Remove Platform"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              ))}
+
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={handleAddPlatform}
+                sx={{ mb: 3 }}
+              >
+                Add Platform
+              </Button>
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Legacy Google Review URL for backward compatibility */}
+              <TextField
+                fullWidth
+                label="Default Google Review URL (Legacy)"
+                type="url"
+                value={googleReviewUrl}
+                onChange={e => setGoogleReviewUrl(e.target.value)}
+                sx={{ mb: 2 }}
+                helperText="Used as fallback if no platforms are configured"
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<OpenInNewIcon />}
+                onClick={() => window.open(googleReviewUrl, '_blank')}
+                disabled={!googleReviewUrl}
+                sx={{ mb: 3 }}
+              >
+                Test Link
+              </Button>
+
+              <Divider sx={{ my: 3 }} />
+
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Button
                   variant="contained"
@@ -554,7 +791,12 @@ const AdminDashboard = () => {
                 <Button
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={() => { setBusinessName(''); setWelcomeMessage(''); setGoogleReviewUrl(''); }}
+                  onClick={() => { 
+                    setBusinessName(''); 
+                    setWelcomeMessage(''); 
+                    setGoogleReviewUrl(''); 
+                    setReviewPlatforms(DEFAULT_REVIEW_PLATFORMS);
+                  }}
                 >
                   Reset
                 </Button>
@@ -692,6 +934,81 @@ const AdminDashboard = () => {
           </Button>
           <Button variant="contained" color="error" onClick={handleBulkDelete}>
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Admin Credentials Modal */}
+      <Dialog open={showCredentialsModal} onClose={() => setShowCredentialsModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ m: 0, p: 2, pr: 6 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LockIcon color="primary" />
+            {hasAdminCredentials ? 'Reset Admin Credentials' : 'Set Admin Credentials'}
+          </Box>
+          <IconButton
+            aria-label="close"
+            onClick={() => setShowCredentialsModal(false)}
+            sx={{ position: 'absolute', right: 8, top: 8, color: (theme) => theme.palette.grey[500] }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {hasAdminCredentials 
+              ? 'Enter new credentials to replace the existing ones. Share these with the business owner.'
+              : 'Create login credentials for the business owner to access their admin panel.'
+            }
+          </Typography>
+
+          <TextField
+            fullWidth
+            label="Username"
+            value={adminUsername}
+            onChange={e => setAdminUsername(e.target.value)}
+            sx={{ mb: 2 }}
+            placeholder="e.g., admin or owner name"
+            autoFocus
+          />
+
+          <TextField
+            fullWidth
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            value={adminPassword}
+            onChange={e => setAdminPassword(e.target.value)}
+            placeholder="Minimum 4 characters"
+            helperText="Share this password with the business owner"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowPassword(!showPassword)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          {hasAdminCredentials && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              This will replace the existing credentials. The business owner will need to use the new username and password.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button variant="outlined" onClick={() => setShowCredentialsModal(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSaveAdminCredentials}
+            disabled={!adminUsername.trim() || adminPassword.length < 4}
+          >
+            {hasAdminCredentials ? 'Update Credentials' : 'Save Credentials'}
           </Button>
         </DialogActions>
       </Dialog>
