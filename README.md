@@ -78,6 +78,69 @@ tail -f /tmp/review-client.log    # Frontend
 2. A backup template is promoted to replace it
 3. This ensures fresh, unique reviews
 
+### AI Template Generation (OpenRouter)
+
+The app uses AI to automatically generate fresh review templates based on real customer feedback.
+
+**When is AI triggered?**
+- Automatically when 10 templates have been used and archived
+- Urgently if the backup pool is empty when a template is used
+
+**Flow Diagram:**
+```
+┌─────────────────────┐
+│ Customer uses       │
+│ review template     │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ Archive edited text │
+│ Rotate in backup    │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ archived_count ≥ 10?│
+└─────────┬───────────┘
+          │ Yes
+          ▼
+┌─────────────────────┐
+│ Call OpenRouter AI  │
+│ (background job)    │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ Generate 10 new     │
+│ backup templates    │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│ Clear archived,     │
+│ store new backups   │
+└─────────────────────┘
+```
+
+**How it works:**
+1. Reads 10 archived reviews (real customer edits)
+2. Sends them to OpenRouter API (Llama 3.1 8B model - free tier)
+3. AI learns the tone, style, and themes from real reviews
+4. Generates 10 unique new templates (validated for uniqueness)
+5. Replaces all backup templates with AI-generated ones
+6. Clears archived templates (resets the cycle)
+
+**API Configuration:**
+| Setting | Value |
+|---------|-------|
+| Endpoint | `https://api.openrouter.ai/v1/chat/completions` |
+| Model | `meta-llama/llama-3.1-8b-instruct:free` |
+| Max retries | 3 (with exponential backoff) |
+| Timeout | 120 seconds |
+
+**To enable:** Set `OPENROUTER_API_KEY` in `backend/.env` (get key from [openrouter.ai/keys](https://openrouter.ai/keys))
+
 ### Business Owner Access
 - Owner visits `/#/business/2/admin`
 - Can add, edit, delete their own templates
