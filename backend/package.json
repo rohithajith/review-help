@@ -7,9 +7,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "jest --runInBand",
-    "compose:up": "docker-compose up -d",
-    "compose:seed": "node seedTenants.js",
-    "compose:dev": "npm run compose:up && node ../backend/waitForPostgres.js && npm run compose:seed && npm start"
+    "seed": "node seedTenants.js"
   },
   "keywords": [],
   "author": "",
