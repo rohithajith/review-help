@@ -5,6 +5,7 @@ const templatesController = require('../controllers/templatesController');
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
+const templateGenerationJob = require('../jobs/templateGenerationJob');
 
 // helper to forward async errors to centralized handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -51,5 +52,40 @@ router.get('/templates/backups', authMiddleware, ownerMiddleware, asyncHandler(t
 router.post('/templates/backups', authMiddleware, ownerMiddleware, [body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.createBackupTemplate));
 router.put('/templates/backups/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.updateBackupTemplate));
 router.delete('/templates/backups/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.deleteBackupTemplate));
+
+// =============================================================================
+// AI Template Generation Routes (Background Job Triggers)
+// =============================================================================
+
+// Get generation status for this business
+router.get('/templates/generation/status', asyncHandler(async (req, res) => {
+  const result = await templateGenerationJob.getGenerationStatus();
+  if (!result.success) {
+    return res.status(500).json({ error: result.error });
+  }
+  // Filter to just this business
+  const businessStatus = result.businesses.find(b => b.id === parseInt(req.businessId, 10));
+  res.json(businessStatus || { error: 'Business not found' });
+}));
+
+// Manually trigger generation for this business
+router.post('/templates/generation/trigger', asyncHandler(async (req, res) => {
+  const businessId = parseInt(req.businessId, 10);
+  
+  // Run in background, don't block the response
+  setImmediate(async () => {
+    try {
+      await templateGenerationJob.runGenerationForBusiness(businessId);
+    } catch (err) {
+      console.error(`[API] Background generation failed for business ${businessId}:`, err.message);
+    }
+  });
+  
+  res.json({ 
+    message: 'Generation job triggered in background',
+    businessId,
+    note: 'Check /templates/generation/status for results'
+  });
+}));
 
 module.exports = router;

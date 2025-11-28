@@ -10,6 +10,7 @@ const logsRoutes = require('./routes/logsRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
+const cronScheduler = require('./jobs/cronScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -52,6 +53,9 @@ if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
     // Ensure all required tables exist
     await ensureAdminSchema();
     console.log('✓ Database schema ready');
+
+    // Initialize cron jobs for background processing
+    cronScheduler.initializeCronJobs();
   } catch (e) {
     console.error('✗ Database connection failed:', e.message);
     console.error('  Make sure ADMIN_DATABASE_URL is set correctly');

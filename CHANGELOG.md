@@ -8,6 +8,28 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+#### Background AI Template Generation
+- **New Feature**: Automatic background generation of templates using OpenRouter AI
+- Uses **Llama 3.1 8B** (FREE model via OpenRouter)
+- **Cron job** runs daily at 2 AM (configurable via `TEMPLATE_GENERATION_CRON` env var)
+- **Triggers**:
+  1. Automatically when 10 templates are archived (used by customers)
+  2. Urgently when backup pool is empty
+  3. Scheduled via cron (daily at 2 AM)
+  4. Manually via API or admin dashboard
+- **New API Endpoints**:
+  - `GET /api/businesses/generation/status` - Status for all businesses
+  - `POST /api/businesses/generation/trigger-all` - Trigger for all businesses
+  - `GET /api/:businessId/templates/generation/status` - Status for one business
+  - `POST /api/:businessId/templates/generation/trigger` - Trigger for one business
+- **Files added**:
+  - `backend/jobs/templateGenerationJob.js` - Job runner
+  - `backend/jobs/cronScheduler.js` - Cron scheduler
+- **Environment Variables**:
+  - `OPENROUTER_API_KEY` - Required for AI generation
+  - `TEMPLATE_GENERATION_CRON` - Cron schedule (default: '0 2 * * *')
+  - `ENABLE_CRON_JOBS` - Set to 'false' to disable (default: enabled)
+
 #### Business Admin Authentication
 - **New Feature**: Business admin pages now require login authentication
 - Added `business_admin_credentials` table to store hashed passwords (bcrypt)
