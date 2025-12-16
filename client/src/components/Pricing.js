@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Container,
   Box,
@@ -13,8 +13,11 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
+import EnterpriseInquiryModal from './EnterpriseInquiryModal';
 
 export default function Pricing() {
+  const [enterpriseModalOpen, setEnterpriseModalOpen] = useState(false);
+
   const plans = [
     {
       name: 'Starter',
@@ -92,18 +95,30 @@ export default function Pricing() {
                     fullWidth
                     variant={p.tone === 'outline' ? 'outlined' : 'contained'}
                     color={p.tone === 'highlight' ? 'primary' : 'primary'}
-                    onClick={() => { window.location.hash = `#/signup?plan=${encodeURIComponent(p.name)}`; }}
+                    onClick={() => {
+                      if (p.name === 'Enterprise') {
+                        setEnterpriseModalOpen(true);
+                      } else {
+                        window.location.hash = `#/signup?plan=${encodeURIComponent(p.name)}`;
+                      }
+                    }}
                     sx={{
                       ...(p.tone === 'highlight' && { bgcolor: 'rgba(255,255,255,0.12)', color: 'common.white' }),
                     }}
                   >
-                    Choose
+                    {p.name === 'Enterprise' ? 'Contact Sales' : 'Choose'}
                   </Button>
                 </CardActions>
               </Card>
             </Grid>
           ))}
         </Grid>
+
+        {/* Enterprise Inquiry Modal */}
+        <EnterpriseInquiryModal 
+          open={enterpriseModalOpen} 
+          onClose={() => setEnterpriseModalOpen(false)} 
+        />
       </Container>
     </Box>
   );

@@ -12,6 +12,19 @@ import {
   Chip,
   Avatar,
   Fade,
+  CircularProgress,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   Star,
@@ -31,7 +44,10 @@ import {
   LocalCafe,
   Phone,
   Email,
+  Business,
 } from '@mui/icons-material';
+import api from '../api';
+import EnterpriseInquiryModal from './EnterpriseInquiryModal';
 
 // Hero Section
 function HeroSection() {
@@ -591,7 +607,7 @@ function BenefitsSection() {
 }
 
 // Pricing Section
-function PricingSection() {
+function PricingSection({ onEnterpriseClick }) {
   const plans = [
     {
       name: 'Starter',
@@ -718,7 +734,7 @@ function PricingSection() {
                     size="large"
                     onClick={() =>
                       plan.name === 'Enterprise'
-                        ? document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
+                        ? onEnterpriseClick()
                         : (window.location.hash = '#/signup')
                     }
                     sx={{
@@ -754,11 +770,31 @@ function PricingSection() {
 function ContactSection() {
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // In a real app, send to backend
-    setSubmitted(true);
+    setLoading(true);
+    setError('');
+    
+    try {
+      const response = await api.post('/contact', formData);
+      if (response.data && response.data.success) {
+        setSubmitted(true);
+        setFormData({ name: '', email: '', message: '' });
+      } else {
+        setError(response.data?.error || 'Failed to send message. Please try again.');
+      }
+    } catch (err) {
+      console.error('Contact form error:', err);
+      setError(
+        err.response?.data?.error || 
+        'Failed to send message. Please try again or email us directly at info@reviewhelp.uk'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -813,12 +849,24 @@ function ContactSection() {
                   <Typography color="text.secondary">
                     We'll get back to you within 24 hours.
                   </Typography>
+                  <Button
+                    variant="outlined"
+                    sx={{ mt: 3 }}
+                    onClick={() => setSubmitted(false)}
+                  >
+                    Send Another Message
+                  </Button>
                 </Box>
               ) : (
                 <form onSubmit={handleSubmit}>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
                     Send us a message
                   </Typography>
+                  {error && (
+                    <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+                      {error}
+                    </Alert>
+                  )}
                   <TextField
                     fullWidth
                     label="Your Name"
@@ -826,6 +874,7 @@ function ContactSection() {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     sx={{ mb: 2 }}
                     required
+                    disabled={loading}
                   />
                   <TextField
                     fullWidth
@@ -835,6 +884,7 @@ function ContactSection() {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     sx={{ mb: 2 }}
                     required
+                    disabled={loading}
                   />
                   <TextField
                     fullWidth
@@ -845,19 +895,21 @@ function ContactSection() {
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     sx={{ mb: 3 }}
                     required
+                    disabled={loading}
                   />
                   <Button
                     type="submit"
                     fullWidth
                     variant="contained"
                     size="large"
+                    disabled={loading}
                     sx={{
                       bgcolor: '#10b981',
                       py: 1.5,
                       '&:hover': { bgcolor: '#059669' },
                     }}
                   >
-                    Send Message
+                    {loading ? <CircularProgress size={24} color="inherit" /> : 'Send Message'}
                   </Button>
                 </form>
               )}
@@ -924,15 +976,23 @@ function CTASection() {
 
 // Main Landing Component
 export default function Landing() {
+  const [enterpriseModalOpen, setEnterpriseModalOpen] = useState(false);
+
   return (
     <Box>
       <HeroSection />
       <ProblemSolutionSection />
       <HowItWorksSection />
       <BenefitsSection />
-      <PricingSection />
+      <PricingSection onEnterpriseClick={() => setEnterpriseModalOpen(true)} />
       <ContactSection />
       <CTASection />
+      
+      {/* Enterprise Inquiry Modal */}
+      <EnterpriseInquiryModal 
+        open={enterpriseModalOpen} 
+        onClose={() => setEnterpriseModalOpen(false)} 
+      />
     </Box>
   );
 }

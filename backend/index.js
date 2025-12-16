@@ -7,6 +7,7 @@ const templatesRoutes = require('./routes/templatesRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const userRoutes = require('./routes/userRoutes');
 const logsRoutes = require('./routes/logsRoutes');
+const contactRoutes = require('./routes/contactRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
@@ -75,6 +76,9 @@ app.use('/api/users', userRoutes);
 
 // Payments
 app.use('/api/payments', paymentsRoutes);
+
+// Contact form and enterprise inquiries
+app.use('/api/contact', contactRoutes);
 
 // Client error logs ingestion (POST) and retrieval (GET)
 app.use('/api/_client-log', logsRoutes);
