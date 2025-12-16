@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, testing ]
+    branches: [ main, master, testing ]
   pull_request:
-    branches: [ main, testing ]
+    branches: [ main, master, testing ]
 
 jobs:
   backend-tests:
@@ -44,6 +44,8 @@ jobs:
         env:
           CI: true
           ADMIN_DATABASE_URL: postgres://appuser:password@localhost:5432/admin_db
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: npm test -- --runInBand
 
   frontend-tests:
@@ -67,4 +69,6 @@ jobs:
         working-directory: ./client
         env:
           CI: true
+          REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
         run: npm test -- --watchAll=false
