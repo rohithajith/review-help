@@ -24,6 +24,22 @@ if (process.env.NODE_ENV === 'test') {
 if (axios && typeof axios.create === 'function') {
   api = axios.create({ baseURL: apiBase });
 
+  // Add request interceptor to include auth token from localStorage
+  if (api.interceptors && api.interceptors.request) {
+    api.interceptors.request.use((config) => {
+      try {
+        const token = localStorage.getItem('supabase_access_token');
+        if (token) {
+          config.headers = config.headers || {};
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) {
+        // localStorage may not be available
+      }
+      return config;
+    });
+  }
+
   // Helpful logging for failed requests to aid debugging in development.
   if (process.env.NODE_ENV !== 'production' && api.interceptors && api.interceptors.response) {
     api.interceptors.response.use(

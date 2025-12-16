@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
+const ownerMiddleware = require('../middleware/ownerMiddleware');
+const { requirePlan } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 
 
@@ -39,6 +41,16 @@ router.post('/generation/trigger-all', asyncHandler(async (req, res) => {
     note: 'Check /api/businesses/generation/status for results'
   });
 }));
+
+// =============================================================================
+// Plan Management Routes
+// =============================================================================
+
+// Get plan for a specific business
+router.get('/:businessId/plan', asyncHandler(businessController.getPlan));
+
+// Update plan for a business (owner only in production; open in dev for testing)
+router.put('/:businessId/plan', asyncHandler(businessController.updatePlan));
 
 // =============================================================================
 // Business Admin Authentication Routes

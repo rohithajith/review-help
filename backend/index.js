@@ -11,12 +11,17 @@ const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
 const cronScheduler = require('./jobs/cronScheduler');
+const paymentsRoutes = require('./routes/paymentsRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5002;
 
 // Middleware
 app.use(cors());
+
+// Stripe webhook needs raw body for signature verification - must be before express.json()
+// The paymentsRoutes handles this internally with express.raw() for the /webhook endpoint
+
 app.use(express.json());
 
 // Simple request logger that includes businessId when present
@@ -67,6 +72,9 @@ app.use('/api/businesses', businessRoutes);
 
 // User routes (onboarding, profile sync)
 app.use('/api/users', userRoutes);
+
+// Payments
+app.use('/api/payments', paymentsRoutes);
 
 // Client error logs ingestion (POST) and retrieval (GET)
 app.use('/api/_client-log', logsRoutes);

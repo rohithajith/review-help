@@ -5,6 +5,7 @@ const templatesController = require('../controllers/templatesController');
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
+const { requirePlan, attachPlanInfo } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 
 // helper to forward async errors to centralized handler
@@ -55,6 +56,7 @@ router.delete('/templates/backups/:id', authMiddleware, ownerMiddleware, [param(
 
 // =============================================================================
 // AI Template Generation Routes (Background Job Triggers)
+// Requires Pro plan or higher for AI generation
 // =============================================================================
 
 // Get generation status for this business
@@ -68,8 +70,8 @@ router.get('/templates/generation/status', asyncHandler(async (req, res) => {
   res.json(businessStatus || { error: 'Business not found' });
 }));
 
-// Manually trigger generation for this business
-router.post('/templates/generation/trigger', asyncHandler(async (req, res) => {
+// Manually trigger generation for this business (requires Pro+ plan)
+router.post('/templates/generation/trigger', requirePlan(['Pro', 'Pro Max', 'Enterprise']), asyncHandler(async (req, res) => {
   const businessId = parseInt(req.businessId, 10);
   
   // Run in background, don't block the response

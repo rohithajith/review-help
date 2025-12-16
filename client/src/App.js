@@ -6,6 +6,7 @@ import Landing from './components/Landing';
 import Pricing from './components/Pricing';
 import Contact from './components/Contact';
 import Signup from './components/Signup';
+import SignupSuccess from './components/SignupSuccess';
 import NavBar from './components/Navbar';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
@@ -227,6 +228,7 @@ export default function App() {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/signup-success" element={<SignupSuccess />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />

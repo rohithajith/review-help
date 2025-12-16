@@ -71,9 +71,11 @@ sleep 2
 
 # Start backend
 echo ""
-echo -e "${BLUE}Starting backend server on port ${PORT:-3001}...${NC}"
+# Ensure backend uses PORT from backend/.env, default to 4000
+BACKEND_PORT=${PORT:-4000}
+echo -e "${BLUE}Starting backend server on port ${BACKEND_PORT}...${NC}"
 cd "$BACKEND"
-nohup node index.js > /tmp/review-backend.log 2>&1 &
+PORT=${BACKEND_PORT} nohup node index.js > /tmp/review-backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > /tmp/review-backend.pid
 echo -e "${GREEN}✓${NC} Backend started (PID: $BACKEND_PID)"
@@ -93,17 +95,30 @@ done
 
 # Start frontend
 echo ""
-echo -e "${BLUE}Starting frontend server on port 3000...${NC}"
+echo -e "${BLUE}Starting frontend server...${NC}"
 cd "$CLIENT"
-PORT=3000 BROWSER=none nohup npm start > /tmp/review-client.log 2>&1 &
+# Choose frontend port; prefer 3004 but fall back if in use
+FRONTEND_PORT=${FRONTEND_PORT:-3004}
+for p in $(seq $FRONTEND_PORT $((FRONTEND_PORT + 10))); do
+    if lsof -iTCP:${p} -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "Port ${p} is in use, trying next..."
+        continue
+    else
+        FRONTEND_PORT=${p}
+        break
+    fi
+done
+echo -e "${BLUE}Using frontend port ${FRONTEND_PORT}${NC}"
+PORT=${FRONTEND_PORT} BROWSER=none nohup npm start > /tmp/review-client.log 2>&1 &
 CLIENT_PID=$!
 echo $CLIENT_PID > /tmp/review-client.pid
 echo -e "${GREEN}✓${NC} Frontend starting (PID: $CLIENT_PID)"
 
 # Wait for frontend to be ready
 echo "Waiting for frontend to be ready (this may take 30-60 seconds)..."
+# Wait for frontend to be ready on the chosen port
 for i in {1..90}; do
-    if curl -s "http://localhost:3000/" > /dev/null 2>&1; then
+    if curl -s "http://localhost:${FRONTEND_PORT}/" > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} Frontend is ready"
         break
     fi
@@ -119,9 +134,9 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}   Review App is running!${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "  ${GREEN}Frontend:${NC}     http://localhost:3000/"
-echo -e "  ${GREEN}Admin:${NC}        http://localhost:3000/#/admin"
-echo -e "  ${GREEN}Backend API:${NC}  http://localhost:${PORT:-3001}/api"
+echo -e "  ${GREEN}Frontend:${NC}     http://localhost:${FRONTEND_PORT}/"
+echo -e "  ${GREEN}Admin:${NC}        http://localhost:${FRONTEND_PORT}/#/admin"
+echo -e "  ${GREEN}Backend API:${NC}  http://localhost:${BACKEND_PORT}/api"
 echo ""
 echo -e "  ${YELLOW}Logs:${NC}"
 echo "    Backend:  tail -f /tmp/review-backend.log"
@@ -135,13 +150,13 @@ echo ""
 if command -v xdg-open &> /dev/null; then
     echo "Opening browser..."
     sleep 2
-    xdg-open "http://localhost:3000/#/admin" 2>/dev/null || true
-    xdg-open "http://localhost:3000/" 2>/dev/null || true
+    xdg-open "http://localhost:${FRONTEND_PORT}/#/admin" 2>/dev/null || true
+    xdg-open "http://localhost:${FRONTEND_PORT}/" 2>/dev/null || true
 elif command -v open &> /dev/null; then
     echo "Opening browser..."
     sleep 2
-    open "http://localhost:3000/#/admin" 2>/dev/null || true
-    open "http://localhost:3000/" 2>/dev/null || true
+    open "http://localhost:${FRONTEND_PORT}/#/admin" 2>/dev/null || true
+    open "http://localhost:${FRONTEND_PORT}/" 2>/dev/null || true
 else
     echo -e "${YELLOW}Note: Open the URLs above manually in your browser${NC}"
 fi

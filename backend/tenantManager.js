@@ -82,6 +82,11 @@ async function ensureAdminSchema() {
       logo_url TEXT,
       welcome_message TEXT,
       review_platforms JSONB DEFAULT '[{"name": "Google", "url": ""}, {"name": "Booking.com", "url": ""}]'::jsonb,
+      plan TEXT DEFAULT 'Starter',
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT,
+      business_type TEXT,
+      business_category TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
@@ -92,6 +97,28 @@ async function ensureAdminSchema() {
     BEGIN 
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'review_platforms') THEN
         ALTER TABLE businesses ADD COLUMN review_platforms JSONB DEFAULT '[{"name": "Google", "url": ""}, {"name": "Booking.com", "url": ""}]'::jsonb;
+      END IF;
+    END $$;
+  `);
+
+  // Add plan and Stripe columns for subscription management (for existing databases)
+  await pool.query(`
+    DO $$ 
+    BEGIN 
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'plan') THEN
+        ALTER TABLE businesses ADD COLUMN plan TEXT DEFAULT 'Starter';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'stripe_customer_id') THEN
+        ALTER TABLE businesses ADD COLUMN stripe_customer_id TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'stripe_subscription_id') THEN
+        ALTER TABLE businesses ADD COLUMN stripe_subscription_id TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'business_type') THEN
+        ALTER TABLE businesses ADD COLUMN business_type TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'business_category') THEN
+        ALTER TABLE businesses ADD COLUMN business_category TEXT;
       END IF;
     END $$;
   `);

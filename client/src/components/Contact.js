@@ -13,7 +13,7 @@ export default function Contact() {
           <Typography variant="h6">Phone</Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>+44 7423 077940</Typography>
           <Typography variant="h6">Email</Typography>
-          <Link href="mailto:rohithajith2405@gmail.com">rohithajith2405@gmail.com</Link>
+          <Link href="mailto:info@reviewhelp.uk">info@reviewhelp.uk</Link>
         </Paper>
       </Container>
     </Box>

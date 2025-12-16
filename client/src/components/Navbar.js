@@ -6,7 +6,7 @@ export default function NavBar() {
     <AppBar position="static" color="primary">
       <Toolbar>
         <Typography variant="h6" component="div" sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => window.location.hash = '#/'}>
-          Review App
+          Review-Help
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button color="inherit" onClick={() => window.location.hash = '#/pricing'}>Pricing</Button>

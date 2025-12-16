@@ -12,8 +12,9 @@ if (!fetchFn) {
   }
 }
 
-const OPENROUTER_URL = 'https://api.openrouter.ai/v1/chat/completions';
-const MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const MODEL = 'openai/gpt-4o-mini';
+const FALLBACK_MODEL = 'google/gemma-3-27b-it:free';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 const SIMILARITY_THRESHOLD = 0.85; // >85% similarity rejected
@@ -73,82 +74,101 @@ function diceCoefficient(a, b) {
   return (2.0 * intersection) / (A.length + B.length);
 }
 
-async function callOpenRouterWithRetries(inputsArray) {
+async function callOpenRouterSingleModel(inputsArray, modelName) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not set in env');
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      console.info(`generationService: calling OpenRouter attempt ${attempt}`);
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: JSON.stringify(inputsArray) }
+  ];
 
-      const messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: JSON.stringify(inputsArray) }
-      ];
+  const payload = {
+    model: modelName,
+    messages,
+    temperature: 0.8,
+    top_p: 0.95,
+    max_tokens: 800
+  };
 
-      const payload = {
-        model: MODEL,
-        messages,
-        temperature: 0.8,
-        top_p: 0.95,
-        max_tokens: 800
-      };
+  let resp;
+  if (typeof GlobalAbortController === 'function') {
+    const controller = new GlobalAbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+    resp = await fetchFn(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } else {
+    resp = await fetchFn(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  }
 
-      let resp;
-      if (typeof GlobalAbortController === 'function') {
-        const controller = new GlobalAbortController();
-        const timeout = setTimeout(() => controller.abort(), 120000);
-        resp = await fetchFn(OPENROUTER_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-      } else {
-        resp = await fetchFn(OPENROUTER_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
+  if (!resp.ok) {
+    const bodyText = await resp.text().catch(() => '');
+    throw new Error(`OpenRouter HTTP ${resp.status} ${resp.statusText}: ${bodyText}`);
+  }
+
+  const data = await resp.json();
+  let text;
+  if (data && data.choices && data.choices[0] && data.choices[0].message) {
+    text = data.choices[0].message.content;
+  } else if (data && data.output && data.output[0] && data.output[0].content) {
+    text = data.output[0].content;
+  } else if (typeof data === 'string') {
+    text = data;
+  } else {
+    throw new Error('Unexpected OpenRouter response shape');
+  }
+
+  if (!text || typeof text !== 'string') throw new Error('Empty response from model');
+  return text;
+}
+
+async function callOpenRouterWithRetries(inputsArray) {
+  const models = [MODEL, FALLBACK_MODEL];
+  
+  for (const modelName of models) {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.info(`generationService: calling OpenRouter model=${modelName} attempt ${attempt}`);
+        const result = await callOpenRouterSingleModel(inputsArray, modelName);
+        console.info(`generationService: success with model=${modelName}`);
+        return result;
+      } catch (err) {
+        console.error(`generationService: ${modelName} attempt ${attempt} failed:`, err && err.message ? err.message : err);
+        
+        // If it's a 404 (model not found), skip to fallback immediately
+        if (err.message && err.message.includes('404')) {
+          console.info(`generationService: model ${modelName} not found, trying fallback`);
+          break;
+        }
+        
+        if (attempt < MAX_RETRIES) {
+          const backoff = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+          console.info(`generationService: retrying in ${backoff}ms`);
+          await sleep(backoff);
+          continue;
+        }
+        // Exhausted retries for this model, try fallback
+        break;
       }
-
-      if (!resp.ok) {
-        const bodyText = await resp.text().catch(() => '');
-        throw new Error(`OpenRouter HTTP ${resp.status} ${resp.statusText}: ${bodyText}`);
-      }
-
-      const data = await resp.json();
-      let text;
-      if (data && data.choices && data.choices[0] && data.choices[0].message) {
-        text = data.choices[0].message.content;
-      } else if (data && data.output && data.output[0] && data.output[0].content) {
-        text = data.output[0].content;
-      } else if (typeof data === 'string') {
-        text = data;
-      } else {
-        throw new Error('Unexpected OpenRouter response shape');
-      }
-
-      if (!text || typeof text !== 'string') throw new Error('Empty response from model');
-      return text;
-    } catch (err) {
-      console.error(`generationService: OpenRouter attempt ${attempt} failed:`, err && err.message ? err.message : err);
-      if (attempt < MAX_RETRIES) {
-        const backoff = RETRY_BASE_MS * Math.pow(2, attempt - 1);
-        console.info(`generationService: retrying in ${backoff}ms`);
-        await sleep(backoff);
-        continue;
-      }
-      throw err;
     }
   }
+  
+  throw new Error('All models failed after retries');
 }
 
 function validateGeneratedArray(rawText, inputsArray) {

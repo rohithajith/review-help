@@ -1,4 +1,4 @@
-const { getAdminPool, seedBusinessTemplates } = require('../tenantManager');
+const { getAdminPool } = require('../tenantManager');
 const bcrypt = require('bcryptjs');
 
 /**
@@ -26,8 +26,10 @@ exports.createBusiness = async (req, res, next) => {
     );
     
     const businessId = result.rows[0].id;
-    // Seed default templates for this business
-    await seedBusinessTemplates(businessId);
+    // Note: seeding is disabled for Supabase-based deployments. Supabase
+    // is the source of truth for templates and should already contain
+    // any required data. If you need to seed demo data, use the
+    // `scripts/seedSharedTenant.js` helper (or run SQL manually).
 
     // If request is authenticated, map the creating user as owner
     try {
@@ -52,7 +54,7 @@ exports.listBusinesses = async (req, res, next) => {
   try {
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, created_at FROM businesses ORDER BY id'
+      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, plan, created_at FROM businesses ORDER BY id'
     );
     res.json(rows);
   } catch (err) {
@@ -65,7 +67,7 @@ exports.getBusiness = async (req, res, next) => {
   try {
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms FROM businesses WHERE id = $1',
+      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, plan FROM businesses WHERE id = $1',
       [businessId]
     );
     if (rows.length === 0) {
@@ -272,6 +274,78 @@ exports.hasAdminCredentials = async (req, res, next) => {
     );
 
     res.json({ hasCredentials: rows.length > 0 });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// =============================================================================
+// Plan Management
+// =============================================================================
+
+/**
+ * Get the plan for a business
+ * GET /:businessId/plan
+ */
+exports.getPlan = async (req, res, next) => {
+  const businessId = req.businessId || req.params.businessId;
+
+  try {
+    const pool = getAdminPool();
+    const { rows } = await pool.query(
+      'SELECT plan, stripe_customer_id, stripe_subscription_id FROM businesses WHERE id = $1',
+      [businessId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
+
+    const { plan, stripe_customer_id, stripe_subscription_id } = rows[0];
+    const { getPlanLimits } = require('../middleware/planMiddleware');
+
+    res.json({
+      plan: plan || 'Starter',
+      limits: getPlanLimits(plan || 'Starter'),
+      stripeCustomerId: stripe_customer_id || null,
+      stripeSubscriptionId: stripe_subscription_id || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Update the plan for a business (admin/owner only)
+ * PUT /:businessId/plan
+ */
+exports.updatePlan = async (req, res, next) => {
+  const businessId = req.businessId || req.params.businessId;
+  const { plan } = req.body;
+
+  const validPlans = ['Starter', 'Free', 'Pro', 'Pro Max', 'Enterprise'];
+  if (!plan || !validPlans.includes(plan)) {
+    return res.status(400).json({ error: `Invalid plan. Must be one of: ${validPlans.join(', ')}` });
+  }
+
+  try {
+    const pool = getAdminPool();
+    const { rows } = await pool.query(
+      'UPDATE businesses SET plan = $1 WHERE id = $2 RETURNING plan',
+      [plan, businessId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
+
+    const { getPlanLimits } = require('../middleware/planMiddleware');
+
+    res.json({
+      success: true,
+      plan: rows[0].plan,
+      limits: getPlanLimits(rows[0].plan),
+    });
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,4 @@
-// Integration test that runs against a Postgres instance (docker-compose)
+// Integration test that runs against a Postgres instance (e.g., Supabase)
 // It expects environment variables to point to the Postgres service:
 // ADMIN_DATABASE_URL, TENANT_DB_URL_1, TENANT_DB_URL_2
 
@@ -26,18 +26,14 @@ describe('Postgres tenant integration', () => {
   let adminPool;
 
   beforeAll(async () => {
-    // Ensure seed script runs to prepare admin DB and tenant schemas
+    // Configure test DB connection strings (point to your test/supabase DBs)
     process.env.ADMIN_DATABASE_URL = ADMIN_DB;
     process.env.TENANT_DB_URL_1 = TENANT1;
     process.env.TENANT_DB_URL_2 = TENANT2;
 
-    // wait script may be used in CI to ensure Postgres is ready externally
-    // run seedTenants to create tables and register tenants (resolve path from this test file)
-    const path = require('path');
-    const seedPath = path.join(__dirname, '..', 'seedTenants.js');
-    await exec(`node ${seedPath}`);
-
-    // require app after env and seeding
+    // Note: seeding scripts are disabled in this repo to avoid accidental
+    // writes to Supabase. Ensure your test database contains the required
+    // tables and test data beforehand. Then require the app.
     app = require('../index');
     adminPool = new Pool({ connectionString: ADMIN_DB });
   }, 60000);
