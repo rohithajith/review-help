@@ -19,6 +19,9 @@ import {
   Alert,
   Grid,
   Chip,
+  IconButton,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Business,
@@ -69,6 +72,9 @@ const REVIEW_PLATFORMS = [
 ];
 
 export default function EnterpriseInquiryModal({ open, onClose }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   const [formData, setFormData] = useState({
     contactName: '',
     email: '',
@@ -146,28 +152,32 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
       onClose={handleClose}
       maxWidth="md"
       fullWidth
+      fullScreen={isMobile}
       PaperProps={{
-        sx: { borderRadius: 3 },
+        sx: { 
+          borderRadius: isMobile ? 0 : 3,
+          m: isMobile ? 0 : 2,
+        },
       }}
     >
       {success ? (
         <>
           <DialogContent>
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <CheckCircle sx={{ fontSize: 80, color: '#10b981', mb: 3 }} />
-              <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72' }}>
+            <Box sx={{ textAlign: 'center', py: { xs: 3, sm: 4 }, px: { xs: 1, sm: 2 } }}>
+              <CheckCircle sx={{ fontSize: { xs: 60, sm: 80 }, color: '#10b981', mb: 2 }} />
+              <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72', fontSize: { xs: '1.5rem', sm: '2rem' } }}>
                 Thank You!
               </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Your enterprise inquiry has been received.
               </Typography>
-              <Typography color="text.secondary">
+              <Typography color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                 Our team will review your requirements and contact you within 24 hours 
                 to discuss a custom solution for {formData.businessName || 'your business'}.
               </Typography>
             </Box>
           </DialogContent>
-          <DialogActions sx={{ p: 3, pt: 0 }}>
+          <DialogActions sx={{ p: { xs: 2, sm: 3 }, pt: 0 }}>
             <Button
               fullWidth
               variant="contained"
@@ -184,31 +194,45 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
         </>
       ) : (
         <form onSubmit={handleSubmit}>
-          <DialogTitle sx={{ pb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Business sx={{ color: '#10b981', fontSize: 32 }} />
+          <DialogTitle sx={{ pb: 1, pr: { xs: 6, sm: 2 }, position: 'relative' }}>
+            {isMobile && (
+              <IconButton
+                onClick={handleClose}
+                disabled={loading}
+                sx={{
+                  position: 'absolute',
+                  right: 8,
+                  top: 8,
+                  color: 'text.secondary',
+                }}
+              >
+                <Close />
+              </IconButton>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 } }}>
+              <Business sx={{ color: '#10b981', fontSize: { xs: 28, sm: 32 }, mt: 0.5 }} />
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1e3c72' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1e3c72', fontSize: { xs: '1.1rem', sm: '1.5rem' }, lineHeight: 1.3 }}>
                   Enterprise Plan Inquiry
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mt: 0.5 }}>
                   Tell us about your business and we'll create a custom solution
                 </Typography>
               </Box>
             </Box>
           </DialogTitle>
 
-          <DialogContent dividers>
+          <DialogContent dividers sx={{ px: { xs: 2, sm: 3 } }}>
             {error && (
-              <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
                 {error}
               </Alert>
             )}
 
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: '#1e3c72' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#1e3c72', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               Contact Information
             </Typography>
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid container spacing={{ xs: 1.5, sm: 2 }} sx={{ mb: 2.5 }}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -218,6 +242,7 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                   onChange={handleChange}
                   required
                   disabled={loading}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -230,6 +255,7 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                   onChange={handleChange}
                   required
                   disabled={loading}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -241,14 +267,15 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                   value={formData.phone}
                   onChange={handleChange}
                   disabled={loading}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
             </Grid>
 
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: '#1e3c72' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#1e3c72', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               Business Information
             </Typography>
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid container spacing={{ xs: 1.5, sm: 2 }} sx={{ mb: 2.5 }}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -258,10 +285,11 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                   onChange={handleChange}
                   required
                   disabled={loading}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Business Type</InputLabel>
                   <Select
                     name="businessType"
@@ -279,7 +307,7 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Number of Locations</InputLabel>
                   <Select
                     name="numberOfLocations"
@@ -297,7 +325,7 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Current Review Volume</InputLabel>
                   <Select
                     name="currentReviewVolume"
@@ -316,11 +344,11 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
               </Grid>
             </Grid>
 
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: '#1e3c72' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#1e3c72', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               Review Platforms You Use
             </Typography>
-            <Box sx={{ mb: 3 }}>
-              <FormGroup row sx={{ gap: 1 }}>
+            <Box sx={{ mb: 2.5 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1 } }}>
                 {REVIEW_PLATFORMS.map((platform) => (
                   <Chip
                     key={platform}
@@ -329,8 +357,10 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                     color={formData.reviewPlatforms.includes(platform) ? 'primary' : 'default'}
                     variant={formData.reviewPlatforms.includes(platform) ? 'filled' : 'outlined'}
                     disabled={loading}
+                    size={isMobile ? 'small' : 'medium'}
                     sx={{
                       cursor: 'pointer',
+                      fontSize: { xs: '0.75rem', sm: '0.8125rem' },
                       '&:hover': {
                         bgcolor: formData.reviewPlatforms.includes(platform) 
                           ? undefined 
@@ -339,10 +369,10 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
                     }}
                   />
                 ))}
-              </FormGroup>
+              </Box>
             </Box>
 
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: '#1e3c72' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#1e3c72', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               Additional Information
             </Typography>
             <TextField
@@ -350,19 +380,20 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
               label="Tell us about your specific needs (optional)"
               name="message"
               multiline
-              rows={3}
+              rows={isMobile ? 2 : 3}
               value={formData.message}
               onChange={handleChange}
               disabled={loading}
               placeholder="e.g., Custom integrations needed, specific features required, timeline, etc."
+              size={isMobile ? 'small' : 'medium'}
             />
           </DialogContent>
 
-          <DialogActions sx={{ p: 3 }}>
+          <DialogActions sx={{ p: { xs: 2, sm: 3 }, flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 0 } }}>
             <Button
               onClick={handleClose}
               disabled={loading}
-              sx={{ color: 'text.secondary' }}
+              sx={{ color: 'text.secondary', order: { xs: 2, sm: 1 }, width: { xs: '100%', sm: 'auto' } }}
             >
               Cancel
             </Button>
@@ -372,7 +403,10 @@ export default function EnterpriseInquiryModal({ open, onClose }) {
               disabled={loading}
               sx={{
                 bgcolor: '#10b981',
-                px: 4,
+                px: { xs: 3, sm: 4 },
+                py: { xs: 1.25, sm: 1 },
+                order: { xs: 1, sm: 2 },
+                width: { xs: '100%', sm: 'auto' },
                 '&:hover': { bgcolor: '#059669' },
               }}
             >

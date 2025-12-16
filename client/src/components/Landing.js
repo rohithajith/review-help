@@ -56,7 +56,8 @@ function HeroSection() {
       sx={{
         background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #10b981 100%)',
         color: 'white',
-        py: { xs: 8, md: 12 },
+        py: { xs: 6, md: 12 },
+        px: { xs: 2, sm: 0 },
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -94,9 +95,9 @@ function HeroSection() {
                   variant="h2"
                   sx={{
                     fontWeight: 800,
-                    fontSize: { xs: '2.2rem', md: '3.2rem' },
+                    fontSize: { xs: '1.75rem', sm: '2.2rem', md: '3.2rem' },
                     lineHeight: 1.2,
-                    mb: 3,
+                    mb: 2,
                   }}
                 >
                   Get More{' '}
@@ -110,15 +111,16 @@ function HeroSection() {
                   sx={{
                     opacity: 0.9,
                     fontWeight: 400,
-                    mb: 4,
+                    mb: 3,
                     lineHeight: 1.6,
+                    fontSize: { xs: '0.95rem', sm: '1rem', md: '1.25rem' },
                   }}
                 >
                   Help customers leave authentic Google reviews in seconds.
                   No fake reviews. No automation. Just simple templates they can
                   copy and personalize.
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', flexDirection: { xs: 'column', sm: 'row' } }}>
                   <Button
                     variant="contained"
                     size="large"
@@ -127,9 +129,9 @@ function HeroSection() {
                     sx={{
                       bgcolor: '#10b981',
                       color: 'white',
-                      px: 4,
+                      px: { xs: 3, md: 4 },
                       py: 1.5,
-                      fontSize: '1.1rem',
+                      fontSize: { xs: '1rem', md: '1.1rem' },
                       fontWeight: 600,
                       '&:hover': { bgcolor: '#059669' },
                     }}
@@ -155,11 +157,11 @@ function HeroSection() {
                     See How It Works
                   </Button>
                 </Box>
-                <Box sx={{ display: 'flex', gap: 3, mt: 4, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 3 }, mt: 3, flexWrap: 'wrap', flexDirection: { xs: 'column', sm: 'row' } }}>
                   {['No credit card required', '7-day free trial', 'Cancel anytime'].map((text) => (
                     <Box key={text} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CheckCircle sx={{ fontSize: 18, color: '#34d399' }} />
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      <CheckCircle sx={{ fontSize: 16, color: '#34d399' }} />
+                      <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                         {text}
                       </Typography>
                     </Box>
@@ -168,7 +170,7 @@ function HeroSection() {
               </Box>
             </Fade>
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={6} sx={{ display: { xs: 'none', md: 'block' } }}>
             <Fade in timeout={1200}>
               <Box
                 sx={{
@@ -319,16 +321,16 @@ function ProblemSolutionSection() {
   ];
 
   return (
-    <Box sx={{ py: { xs: 8, md: 12 }, bgcolor: '#f8f9fa' }}>
+    <Box sx={{ py: { xs: 6, md: 12 }, bgcolor: '#f8f9fa' }}>
       <Container maxWidth="lg">
-        <Box sx={{ textAlign: 'center', mb: 6 }}>
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 }, px: { xs: 2, sm: 0 } }}>
           <Typography
             variant="h3"
-            sx={{ fontWeight: 700, mb: 2, color: '#1e3c72' }}
+            sx={{ fontWeight: 700, mb: 2, color: '#1e3c72', fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}
           >
             Sound Familiar?
           </Typography>
-          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto' }}>
+          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
             Most local businesses struggle to get consistent reviews. Here's why...
           </Typography>
         </Box>
@@ -431,14 +433,14 @@ function HowItWorksSection() {
   ];
 
   return (
-    <Box id="how-it-works" sx={{ py: { xs: 8, md: 12 } }}>
+    <Box id="how-it-works" sx={{ py: { xs: 6, md: 12 } }}>
       <Container maxWidth="lg">
-        <Box sx={{ textAlign: 'center', mb: 6 }}>
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 }, px: { xs: 2, sm: 0 } }}>
           <Chip label="Simple Process" color="primary" sx={{ mb: 2 }} />
-          <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72' }}>
+          <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72', fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}>
             How It Works
           </Typography>
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" color="text.secondary" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
             From scan to 5-star review in under 30 seconds
           </Typography>
         </Box>
@@ -531,14 +533,16 @@ function BenefitsSection() {
   ];
 
   return (
-    <Box sx={{ py: { xs: 8, md: 12 }, bgcolor: '#f8f9fa' }}>
+    <Box sx={{ py: { xs: 6, md: 12 }, bgcolor: '#f8f9fa' }}>
       <Container maxWidth="lg">
-        <Grid container spacing={6} alignItems="center">
+        <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
           <Grid item xs={12} md={6}>
-            <Chip label="Why Choose Us" color="primary" sx={{ mb: 2 }} />
-            <Typography variant="h3" sx={{ fontWeight: 700, mb: 3, color: '#1e3c72' }}>
-              Everything You Need to Grow Your Reviews
-            </Typography>
+            <Box sx={{ px: { xs: 2, sm: 0 } }}>
+              <Chip label="Why Choose Us" color="primary" sx={{ mb: 2 }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, mb: 3, color: '#1e3c72', fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}>
+                Everything You Need to Grow Your Reviews
+              </Typography>
+            </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {benefits.map((b, i) => (
                 <Box key={i} sx={{ display: 'flex', gap: 2 }}>
@@ -670,14 +674,14 @@ function PricingSection({ onEnterpriseClick }) {
   ];
 
   return (
-    <Box id="pricing" sx={{ py: { xs: 8, md: 12 } }}>
+    <Box id="pricing" sx={{ py: { xs: 6, md: 12 } }}>
       <Container maxWidth="lg">
-        <Box sx={{ textAlign: 'center', mb: 8 }}>
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 8 }, px: { xs: 2, sm: 0 } }}>
           <Chip label="Pricing" color="primary" sx={{ mb: 2 }} />
-          <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72' }}>
+          <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72', fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}>
             Simple, Transparent Pricing
           </Typography>
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" color="text.secondary" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
             Start free, upgrade when you're ready
           </Typography>
         </Box>
@@ -798,17 +802,19 @@ function ContactSection() {
   };
 
   return (
-    <Box id="contact" sx={{ py: { xs: 8, md: 12 }, bgcolor: '#f8f9fa' }}>
+    <Box id="contact" sx={{ py: { xs: 6, md: 12 }, bgcolor: '#f8f9fa' }}>
       <Container maxWidth="lg">
-        <Grid container spacing={6}>
+        <Grid container spacing={{ xs: 4, md: 6 }}>
           <Grid item xs={12} md={6}>
-            <Chip label="Get in Touch" color="primary" sx={{ mb: 2 }} />
-            <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72' }}>
-              Ready to Grow Your Reviews?
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Have questions? Want a demo? Our team is here to help you get started.
-            </Typography>
+            <Box sx={{ px: { xs: 2, sm: 0 } }}>
+              <Chip label="Get in Touch" color="primary" sx={{ mb: 2 }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, color: '#1e3c72', fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}>
+                Ready to Grow Your Reviews?
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+                Have questions? Want a demo? Our team is here to help you get started.
+              </Typography>
+            </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Avatar sx={{ bgcolor: '#e8f5e9', color: '#10b981' }}>
@@ -926,30 +932,33 @@ function CTASection() {
   return (
     <Box
       sx={{
-        py: { xs: 8, md: 10 },
+        py: { xs: 6, md: 10 },
+        px: { xs: 2, sm: 0 },
         background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
         color: 'white',
         textAlign: 'center',
       }}
     >
       <Container maxWidth="md">
-        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, fontSize: { xs: '1.5rem', sm: '2rem', md: '3rem' } }}>
           Start Getting More Reviews Today
         </Typography>
-        <Typography variant="h6" sx={{ opacity: 0.9, mb: 4 }}>
+        <Typography variant="h6" sx={{ opacity: 0.9, mb: 4, fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
           Try free for 7 days — no credit card required
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', flexDirection: { xs: 'column', sm: 'row' }, alignItems: 'center' }}>
           <Button
             variant="contained"
             size="large"
             onClick={() => (window.location.hash = '#/signup')}
             sx={{
               bgcolor: '#10b981',
-              px: 4,
+              px: { xs: 3, md: 4 },
               py: 1.5,
-              fontSize: '1.1rem',
+              fontSize: { xs: '1rem', md: '1.1rem' },
               '&:hover': { bgcolor: '#059669' },
+              width: { xs: '100%', sm: 'auto' },
+              maxWidth: { xs: 280, sm: 'none' },
             }}
           >
             Start Your Free Trial
@@ -961,9 +970,11 @@ function CTASection() {
             sx={{
               borderColor: 'rgba(255,255,255,0.5)',
               color: 'white',
-              px: 4,
+              px: { xs: 3, md: 4 },
               py: 1.5,
               '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' },
+              width: { xs: '100%', sm: 'auto' },
+              maxWidth: { xs: 280, sm: 'none' },
             }}
           >
             Contact Sales
