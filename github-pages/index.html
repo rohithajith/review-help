@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review-Help | Get More 5-Star Reviews</title>
+  <meta name="description" content="Review-Help - Get more 5-star reviews for your business with AI-powered review templates">
+  <meta name="theme-color" content="#10b981">
+  <link rel="icon" href="logo.png" type="image/png">
+  <link rel="apple-touch-icon" href="logo.png">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f8f9fa;
+    }
+    
+    /* Navbar */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    }
+    
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: white;
+    }
+    
+    .navbar-brand img {
+      height: 40px;
+      width: auto;
+    }
+    
+    .navbar-brand span {
+      font-weight: 700;
+      font-size: 1.25rem;
+    }
+    
+    .navbar-links {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .navbar-links a {
+      color: white;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.3s;
+    }
+    
+    .navbar-links a:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .navbar-links .btn-signup {
+      background: rgba(16, 185, 129, 0.9);
+      font-weight: 600;
+    }
+    
+    .navbar-links .btn-signup:hover {
+      background: rgba(16, 185, 129, 1);
+    }
+    
+    .mobile-menu-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    
+    /* Hero Section */
+    .hero {
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #10b981 100%);
+      color: white;
+      padding: 120px 2rem 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -100px;
+      right: -100px;
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: -50px;
+      left: -50px;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .hero-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    
+    .hero h1 {
+      font-size: 3.2rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    
+    .hero h1 .highlight {
+      color: #34d399;
+    }
+    
+    .hero p {
+      font-size: 1.25rem;
+      opacity: 0.9;
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+    
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .btn-primary {
+      background: #10b981;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #059669;
+    }
+    
+    .btn-outline {
+      background: transparent;
+      color: white;
+      border: 2px solid rgba(255,255,255,0.5);
+    }
+    
+    .btn-outline:hover {
+      border-color: white;
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .hero-features {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+    
+    .hero-features span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    
+    .hero-features .material-icons {
+      color: #34d399;
+      font-size: 18px;
+    }
+    
+    /* Phone Mockup */
+    .phone-mockup {
+      display: flex;
+      justify-content: center;
+      position: relative;
+    }
+    
+    .phone {
+      width: 280px;
+      height: 500px;
+      background: #f8f9fa;
+      border-radius: 36px;
+      border: 8px solid #1a1a1a;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    }
+    
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 24px;
+      background: #1a1a1a;
+      border-radius: 0 0 12px 12px;
+      z-index: 10;
+    }
+    
+    .phone-content {
+      padding: 16px;
+      padding-top: 40px;
+    }
+    
+    .phone-header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    
+    .phone-avatar {
+      width: 48px;
+      height: 48px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+      color: white;
+    }
+    
+    .phone-header h3 {
+      font-size: 0.9rem;
+      color: #1e3c72;
+      margin-bottom: 4px;
+    }
+    
+    .phone-header p {
+      font-size: 0.75rem;
+      color: #666;
+    }
+    
+    .template-card {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border: 1px solid #eee;
+      font-size: 0.7rem;
+      line-height: 1.4;
+      transition: all 0.2s;
+    }
+    
+    .template-card.selected {
+      background: #e8f5e9;
+      border: 2px solid #10b981;
+    }
+    
+    .phone-btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      width: 100%;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    
+    .floating-stat {
+      position: absolute;
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    }
+    
+    .floating-stat.top {
+      top: 40px;
+      right: -20px;
+    }
+    
+    .floating-stat.bottom {
+      bottom: 60px;
+      left: -30px;
+    }
+    
+    .floating-stat h4 {
+      font-size: 1.25rem;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .floating-stat h4 .material-icons {
+      color: #10b981;
+    }
+    
+    .floating-stat p {
+      font-size: 0.75rem;
+      color: #666;
+    }
+    
+    .stars {
+      display: flex;
+      gap: 2px;
+    }
+    
+    .stars .material-icons {
+      color: #fbbf24;
+      font-size: 16px;
+    }
+    
+    /* Problems Section */
+    .problems {
+      padding: 80px 2rem;
+      background: #f8f9fa;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    
+    .section-header h2 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #1e3c72;
+      margin-bottom: 0.5rem;
+    }
+    
+    .section-header p {
+      font-size: 1.25rem;
+      color: #666;
+    }
+    
+    .problems-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    
+    .problem-card {
+      background: white;
+      padding: 2rem;
+      border-radius: 16px;
+      text-align: center;
+      border: 1px solid #eee;
+      transition: all 0.3s;
+    }
+    
+    .problem-card:hover {
+      border-color: #ef4444;
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.15);
+    }
+    
+    .problem-card .emoji {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    .problem-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .problem-card p {
+      font-size: 0.875rem;
+      color: #666;
+    }
+    
+    .solution-box {
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      color: white;
+      padding: 3rem;
+      border-radius: 24px;
+      text-align: center;
+    }
+    
+    .solution-box h3 {
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+    }
+    
+    .solution-box p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+      max-width: 700px;
+      margin: 0 auto 2rem;
+    }
+    
+    /* How It Works */
+    .how-it-works {
+      padding: 80px 2rem;
+      background: white;
+    }
+    
+    .chip {
+      display: inline-block;
+      background: #e8f5e9;
+      color: #10b981;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+    }
+    
+    .step-card {
+      text-align: center;
+      position: relative;
+    }
+    
+    .step-number {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 32px;
+      height: 32px;
+      background: #10b981;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      z-index: 1;
+    }
+    
+    .step-content {
+      background: white;
+      padding: 2rem;
+      padding-top: 2.5rem;
+      border-radius: 16px;
+      border: 2px solid transparent;
+      transition: all 0.3s;
+      min-height: 220px;
+    }
+    
+    .step-content:hover {
+      border-color: #10b981;
+      transform: translateY(-8px);
+      box-shadow: 0 12px 24px rgba(16, 185, 129, 0.15);
+    }
+    
+    .step-content .material-icons {
+      font-size: 48px;
+      color: #10b981;
+      margin-bottom: 1rem;
+    }
+    
+    .step-content h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .step-content p {
+      font-size: 0.875rem;
+      color: #666;
+    }
+    
+    /* Benefits */
+    .benefits {
+      padding: 80px 2rem;
+      background: #f8f9fa;
+    }
+    
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    
+    .benefits-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    
+    .benefit-item {
+      display: flex;
+      gap: 1rem;
+    }
+    
+    .benefit-icon {
+      width: 48px;
+      height: 48px;
+      background: #e8f5e9;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    
+    .benefit-icon .material-icons {
+      color: #10b981;
+    }
+    
+    .benefit-item h4 {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .benefit-item p {
+      font-size: 0.875rem;
+      color: #666;
+    }
+    
+    .perfect-for-box {
+      background: linear-gradient(135deg, #1e3c72 0%, #10b981 100%);
+      color: white;
+      padding: 2rem;
+      border-radius: 24px;
+    }
+    
+    .perfect-for-box h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+    
+    .perfect-for-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    
+    .perfect-for-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 12px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      font-size: 0.875rem;
+    }
+    
+    .perfect-for-extra {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      font-weight: 500;
+    }
+    
+    /* Pricing */
+    .pricing {
+      padding: 80px 2rem;
+      background: white;
+    }
+    
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+    }
+    
+    .pricing-card {
+      background: white;
+      border: 1px solid #eee;
+      border-radius: 16px;
+      padding: 2rem;
+      position: relative;
+      transition: all 0.3s;
+    }
+    
+    .pricing-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 16px 32px rgba(0,0,0,0.1);
+    }
+    
+    .pricing-card.popular {
+      border: 2px solid #10b981;
+    }
+    
+    .popular-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #10b981;
+      color: white;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .pricing-card h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .pricing-card .desc {
+      font-size: 0.875rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+    
+    .price {
+      display: flex;
+      align-items: baseline;
+      margin-bottom: 1.5rem;
+    }
+    
+    .price .amount {
+      font-size: 2.5rem;
+      font-weight: 700;
+    }
+    
+    .price .period {
+      color: #666;
+    }
+    
+    .pricing-card .btn {
+      width: 100%;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .pricing-card.popular .btn {
+      background: #10b981;
+      color: white;
+    }
+    
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .features-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+      list-style: none;
+    }
+    
+    .features-list .material-icons {
+      color: #10b981;
+      font-size: 18px;
+    }
+    
+    /* Contact */
+    .contact {
+      padding: 80px 2rem;
+      background: #f8f9fa;
+    }
+    
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+    
+    .contact-info h2 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #1e3c72;
+      margin-bottom: 1rem;
+    }
+    
+    .contact-info > p {
+      color: #666;
+      margin-bottom: 2rem;
+    }
+    
+    .contact-methods {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    
+    .contact-method {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .contact-method .icon {
+      width: 48px;
+      height: 48px;
+      background: #e8f5e9;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .contact-method .icon .material-icons {
+      color: #10b981;
+    }
+    
+    .contact-method .label {
+      font-size: 0.875rem;
+      color: #666;
+    }
+    
+    .contact-method .value {
+      font-weight: 600;
+    }
+    
+    .contact-form {
+      background: white;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    
+    .contact-form h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+    
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 1rem;
+      transition: border-color 0.3s;
+    }
+    
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #10b981;
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+    
+    /* CTA Section */
+    .cta {
+      padding: 80px 2rem;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      color: white;
+      text-align: center;
+    }
+    
+    .cta h2 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+    
+    .cta p {
+      font-size: 1.25rem;
+      opacity: 0.9;
+      margin-bottom: 2rem;
+    }
+    
+    .cta-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    /* Footer */
+    .footer {
+      background: white;
+      padding: 2rem;
+      text-align: center;
+      border-top: 1px solid #eee;
+    }
+    
+    .footer p {
+      color: #666;
+      font-size: 0.875rem;
+    }
+    
+    /* Success Message */
+    .success-message {
+      background: #e8f5e9;
+      border: 1px solid #10b981;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+    }
+    
+    .success-message .material-icons {
+      font-size: 64px;
+      color: #10b981;
+      margin-bottom: 1rem;
+    }
+    
+    .success-message h4 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .success-message p {
+      color: #666;
+    }
+    
+    /* Mobile Responsive */
+    @media (max-width: 1024px) {
+      .problems-grid,
+      .steps-grid,
+      .pricing-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .navbar-links {
+        display: none;
+      }
+      
+      .mobile-menu-btn {
+        display: block;
+      }
+      
+      .hero-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      
+      .hero h1 {
+        font-size: 2rem;
+      }
+      
+      .hero p {
+        font-size: 1rem;
+      }
+      
+      .hero-buttons {
+        justify-content: center;
+      }
+      
+      .hero-features {
+        justify-content: center;
+      }
+      
+      .phone-mockup {
+        display: none;
+      }
+      
+      .problems-grid,
+      .steps-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .benefits-grid,
+      .contact-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .pricing-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .section-header h2 {
+        font-size: 1.75rem;
+      }
+      
+      .section-header p {
+        font-size: 1rem;
+      }
+      
+      .cta h2 {
+        font-size: 1.75rem;
+      }
+      
+      .cta p {
+        font-size: 1rem;
+      }
+      
+      .contact-info h2 {
+        font-size: 1.75rem;
+      }
+    }
+    
+    /* Mobile Menu */
+    .mobile-menu {
+      display: none;
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 250px;
+      height: 100vh;
+      background: white;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+      z-index: 1001;
+      padding: 2rem;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+    }
+    
+    .mobile-menu.open {
+      transform: translateX(0);
+    }
+    
+    .mobile-menu-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    
+    .mobile-menu-links {
+      margin-top: 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .mobile-menu-links a {
+      color: #333;
+      text-decoration: none;
+      padding: 12px;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+    
+    .mobile-menu-links a:hover {
+      background: #f8f9fa;
+    }
+    
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+    }
+    
+    .overlay.open {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a href="#" class="navbar-brand">
+      <img src="logo.png" alt="Review-Help">
+      <span>Review-Help</span>
+    </a>
+    <div class="navbar-links">
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Contact</a>
+      <a href="https://reviewhelp.uk/#/login">Login</a>
+      <a href="https://reviewhelp.uk/#/signup" class="btn-signup">Sign Up</a>
+    </div>
+    <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+      <span class="material-icons">menu</span>
+    </button>
+  </nav>
+  
+  <!-- Mobile Menu -->
+  <div class="overlay" id="overlay" onclick="toggleMobileMenu()"></div>
+  <div class="mobile-menu" id="mobileMenu">
+    <button class="mobile-menu-close" onclick="toggleMobileMenu()">
+      <span class="material-icons">close</span>
+    </button>
+    <div class="mobile-menu-links">
+      <a href="#pricing" onclick="toggleMobileMenu()">Pricing</a>
+      <a href="#contact" onclick="toggleMobileMenu()">Contact</a>
+      <a href="https://reviewhelp.uk/#/login">Login</a>
+      <a href="https://reviewhelp.uk/#/signup">Sign Up</a>
+    </div>
+  </div>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div>
+        <h1>Get More <span class="highlight">5-Star Reviews</span> Without the Hassle</h1>
+        <p>Help customers leave authentic Google reviews in seconds. No fake reviews. No automation. Just simple templates they can copy and personalize.</p>
+        <div class="hero-buttons">
+          <a href="https://reviewhelp.uk/#/signup" class="btn btn-primary">
+            Start Free Trial
+            <span class="material-icons">arrow_forward</span>
+          </a>
+          <a href="#how-it-works" class="btn btn-outline">
+            <span class="material-icons">play_arrow</span>
+            See How It Works
+          </a>
+        </div>
+        <div class="hero-features">
+          <span><span class="material-icons">check_circle</span> No credit card required</span>
+          <span><span class="material-icons">check_circle</span> 7-day free trial</span>
+          <span><span class="material-icons">check_circle</span> Cancel anytime</span>
+        </div>
+      </div>
+      <div class="phone-mockup">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="phone-content">
+            <div class="phone-header">
+              <div class="phone-avatar">
+                <span class="material-icons">restaurant</span>
+              </div>
+              <h3>Joe's Restaurant</h3>
+              <p>Pick a review template</p>
+            </div>
+            <div class="template-card selected">
+              Great food and friendly staff — highly recommend!
+            </div>
+            <div class="template-card">
+              Amazing flavors and great portions. We'll be back!
+            </div>
+            <div class="template-card">
+              The service was quick and dishes delicious. ⭐⭐⭐⭐⭐
+            </div>
+            <button class="phone-btn">
+              <span class="material-icons" style="font-size: 14px;">content_copy</span>
+              Copy & Leave Review
+            </button>
+          </div>
+        </div>
+        <div class="floating-stat top">
+          <h4><span class="material-icons">trending_up</span> +127%</h4>
+          <p>More reviews</p>
+        </div>
+        <div class="floating-stat bottom">
+          <div class="stars">
+            <span class="material-icons">star</span>
+            <span class="material-icons">star</span>
+            <span class="material-icons">star</span>
+            <span class="material-icons">star</span>
+            <span class="material-icons">star</span>
+          </div>
+          <p>4.9 avg rating</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problems Section -->
+  <section class="problems">
+    <div class="container">
+      <div class="section-header">
+        <h2>Sound Familiar?</h2>
+        <p>Most local businesses struggle to get consistent reviews. Here's why...</p>
+      </div>
+      <div class="problems-grid">
+        <div class="problem-card">
+          <div class="emoji">😓</div>
+          <h3>Customers forget to leave reviews</h3>
+          <p>Even happy customers rarely take the time to write a review</p>
+        </div>
+        <div class="problem-card">
+          <div class="emoji">⏰</div>
+          <h3>No time to ask for reviews</h3>
+          <p>You're busy running your business, not chasing reviews</p>
+        </div>
+        <div class="problem-card">
+          <div class="emoji">✍️</div>
+          <h3>Customers don't know what to write</h3>
+          <p>Blank review boxes lead to abandoned reviews</p>
+        </div>
+        <div class="problem-card">
+          <div class="emoji">📉</div>
+          <h3>Inconsistent review flow</h3>
+          <p>Reviews come in bursts, then nothing for months</p>
+        </div>
+      </div>
+      <div class="solution-box">
+        <h3>There's a Better Way ✨</h3>
+        <p>Review-Help gives your customers ready-made templates they can copy in one tap. No thinking, no typing, just genuine reviews in seconds.</p>
+        <a href="https://reviewhelp.uk/#/signup" class="btn btn-primary">See It In Action</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <span class="chip">Simple Process</span>
+        <h2>How It Works</h2>
+        <p>From scan to 5-star review in under 30 seconds</p>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <span class="material-icons">qr_code_2</span>
+            <h3>Share Your QR Code</h3>
+            <p>Print or display your unique QR code at checkout, on receipts, or on table tents.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <span class="material-icons">rate_review</span>
+            <h3>Customer Picks a Template</h3>
+            <p>They see 10 ready-made review templates. Pick one, edit if they want.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <span class="material-icons">content_copy</span>
+            <h3>Copy & Paste to Google</h3>
+            <p>One tap copies the text. Google Reviews opens. They paste and submit.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <span class="material-icons">auto_awesome</span>
+            <h3>Endless Fresh Templates</h3>
+            <p>AI generates new templates continuously as old ones get used — your review page never runs dry.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benefits -->
+  <section class="benefits">
+    <div class="container">
+      <div class="benefits-grid">
+        <div>
+          <span class="chip">Why Choose Us</span>
+          <h2 style="font-size: 2.5rem; font-weight: 700; color: #1e3c72; margin-bottom: 2rem;">Everything You Need to Grow Your Reviews</h2>
+          <div class="benefits-list">
+            <div class="benefit-item">
+              <div class="benefit-icon">
+                <span class="material-icons">trending_up</span>
+              </div>
+              <div>
+                <h4>Get More Reviews</h4>
+                <p>Businesses using Review-Help see an average of 127% more reviews in the first month.</p>
+              </div>
+            </div>
+            <div class="benefit-item">
+              <div class="benefit-icon">
+                <span class="material-icons">speed</span>
+              </div>
+              <div>
+                <h4>Save Hours Every Week</h4>
+                <p>No more manually asking customers. The QR code does the work for you.</p>
+              </div>
+            </div>
+            <div class="benefit-item">
+              <div class="benefit-icon">
+                <span class="material-icons">auto_awesome</span>
+              </div>
+              <div>
+                <h4>Endless AI Templates</h4>
+                <p>AI continuously generates fresh templates as old ones get used — you never run out of reviews.</p>
+              </div>
+            </div>
+            <div class="benefit-item">
+              <div class="benefit-icon">
+                <span class="material-icons">security</span>
+              </div>
+              <div>
+                <h4>100% Compliant</h4>
+                <p>Every review is genuine, manual, and fully compliant with Google's policies.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="perfect-for-box">
+          <h3>Perfect For</h3>
+          <div class="perfect-for-grid">
+            <div class="perfect-for-item">
+              <span class="material-icons">restaurant</span>
+              Restaurants
+            </div>
+            <div class="perfect-for-item">
+              <span class="material-icons">spa</span>
+              Salons & Spas
+            </div>
+            <div class="perfect-for-item">
+              <span class="material-icons">store</span>
+              Retail Shops
+            </div>
+            <div class="perfect-for-item">
+              <span class="material-icons">local_cafe</span>
+              Cafés & Bars
+            </div>
+            <div class="perfect-for-item">
+              <span class="material-icons">speed</span>
+              TaskRabbit Pros
+            </div>
+            <div class="perfect-for-item">
+              <span class="material-icons">trending_up</span>
+              Freelancers
+            </div>
+          </div>
+          <div class="perfect-for-extra">
+            ✨ Also great for SkillDigger, StarOfService & more
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-header">
+        <span class="chip">Pricing</span>
+        <h2>Simple, Transparent Pricing</h2>
+        <p>Start free, upgrade when you're ready</p>
+      </div>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Starter</h3>
+          <p class="desc">Perfect for trying out</p>
+          <div class="price">
+            <span class="amount">Free</span>
+            <span class="period">&nbsp;7-day trial</span>
+          </div>
+          <a href="https://reviewhelp.uk/#/signup" class="btn btn-outline" style="color: #333; border-color: #ddd;">Start Free Trial</a>
+          <ul class="features-list">
+            <li><span class="material-icons">check_circle</span> 1 business</li>
+            <li><span class="material-icons">check_circle</span> 1 review platform</li>
+            <li><span class="material-icons">check_circle</span> 10 active templates</li>
+            <li><span class="material-icons">check_circle</span> Basic analytics</li>
+            <li><span class="material-icons">check_circle</span> Email support</li>
+          </ul>
+        </div>
+        <div class="pricing-card popular">
+          <div class="popular-badge">Most Popular</div>
+          <h3>Pro</h3>
+          <p class="desc">For growing businesses</p>
+          <div class="price">
+            <span class="amount">£39</span>
+            <span class="period">/month</span>
+          </div>
+          <a href="https://reviewhelp.uk/#/signup" class="btn btn-primary">Start Free Trial</a>
+          <ul class="features-list">
+            <li><span class="material-icons">check_circle</span> 2 businesses</li>
+            <li><span class="material-icons">check_circle</span> 2 review platforms</li>
+            <li><span class="material-icons">check_circle</span> Unlimited templates</li>
+            <li><span class="material-icons">check_circle</span> AI template generation</li>
+            <li><span class="material-icons">check_circle</span> Advanced analytics</li>
+            <li><span class="material-icons">check_circle</span> Priority support</li>
+          </ul>
+        </div>
+        <div class="pricing-card">
+          <h3>Pro Max</h3>
+          <p class="desc">For multi-location businesses</p>
+          <div class="price">
+            <span class="amount">£49</span>
+            <span class="period">/month</span>
+          </div>
+          <a href="https://reviewhelp.uk/#/signup" class="btn btn-outline" style="color: #333; border-color: #ddd;">Start Free Trial</a>
+          <ul class="features-list">
+            <li><span class="material-icons">check_circle</span> 5 businesses</li>
+            <li><span class="material-icons">check_circle</span> 3 review platforms</li>
+            <li><span class="material-icons">check_circle</span> Unlimited templates</li>
+            <li><span class="material-icons">check_circle</span> AI template generation</li>
+            <li><span class="material-icons">check_circle</span> Advanced analytics</li>
+            <li><span class="material-icons">check_circle</span> Custom branding</li>
+          </ul>
+        </div>
+        <div class="pricing-card">
+          <h3>Enterprise</h3>
+          <p class="desc">For large organizations</p>
+          <div class="price">
+            <span class="amount">Custom</span>
+          </div>
+          <a href="#contact" class="btn btn-outline" style="color: #333; border-color: #ddd;">Contact Sales</a>
+          <ul class="features-list">
+            <li><span class="material-icons">check_circle</span> Unlimited businesses</li>
+            <li><span class="material-icons">check_circle</span> Unlimited platforms</li>
+            <li><span class="material-icons">check_circle</span> Dedicated account manager</li>
+            <li><span class="material-icons">check_circle</span> Custom integrations</li>
+            <li><span class="material-icons">check_circle</span> SLA guarantee</li>
+            <li><span class="material-icons">check_circle</span> API access</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="contact" id="contact">
+    <div class="container">
+      <div class="contact-grid">
+        <div class="contact-info">
+          <span class="chip">Get in Touch</span>
+          <h2>Ready to Grow Your Reviews?</h2>
+          <p>Have questions? Want a demo? Our team is here to help you get started.</p>
+          <div class="contact-methods">
+            <div class="contact-method">
+              <div class="icon">
+                <span class="material-icons">phone</span>
+              </div>
+              <div>
+                <div class="label">Call us</div>
+                <div class="value">+44 7423 077940</div>
+              </div>
+            </div>
+            <div class="contact-method">
+              <div class="icon">
+                <span class="material-icons">email</span>
+              </div>
+              <div>
+                <div class="label">Email us</div>
+                <div class="value">info@reviewhelp.uk</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="contact-form">
+          <div id="formContainer">
+            <h3>Interested? Leave your details</h3>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">We'll reach out within 24 hours to discuss how Review-Help can help your business.</p>
+            <!-- Using Formspree for email delivery - replace YOUR_FORM_ID with your Formspree form ID -->
+            <form id="contactForm" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+              <input type="hidden" name="_subject" value="New Inquiry from Review-Help Landing Page">
+              <div class="form-group">
+                <label for="name">Your Name *</label>
+                <input type="text" id="name" name="name" required placeholder="John Smith">
+              </div>
+              <div class="form-group">
+                <label for="email">Email Address *</label>
+                <input type="email" id="email" name="email" required placeholder="john@example.com">
+              </div>
+              <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone" placeholder="+44 7xxx xxxxxx">
+              </div>
+              <div class="form-group">
+                <label for="business">Business Name</label>
+                <input type="text" id="business" name="business" placeholder="Your Business Name">
+              </div>
+              <div class="form-group">
+                <label for="message">Message (Optional)</label>
+                <textarea id="message" name="message" rows="3" placeholder="Tell us about your business or any questions you have..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%;">
+                <span class="material-icons" style="font-size: 18px;">send</span>
+                Submit Inquiry
+              </button>
+            </form>
+          </div>
+          <div id="successMessage" class="success-message" style="display: none;">
+            <span class="material-icons">check_circle</span>
+            <h4>Thank You!</h4>
+            <p>We've received your inquiry and will contact you within 24 hours.</p>
+            <button onclick="resetForm()" class="btn btn-outline" style="margin-top: 1rem; color: #333; border-color: #ddd;">Submit Another Inquiry</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container">
+      <h2>Start Getting More Reviews Today</h2>
+      <p>Try free for 7 days — no credit card required</p>
+      <div class="cta-buttons">
+        <a href="https://reviewhelp.uk/#/signup" class="btn btn-primary">Start Your Free Trial</a>
+        <a href="#contact" class="btn btn-outline">Contact Sales</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>© 2025 Review-Help. All rights reserved.</p>
+  </footer>
+
+  <script>
+    // Mobile menu toggle
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const overlay = document.getElementById('overlay');
+      menu.classList.toggle('open');
+      overlay.classList.toggle('open');
+    }
+    
+    // Contact form handling with Formspree
+    document.getElementById('contactForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const form = e.target;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalBtnText = submitBtn.innerHTML;
+      
+      // Show loading state
+      submitBtn.innerHTML = '<span class="material-icons" style="font-size: 18px; animation: spin 1s linear infinite;">sync</span> Sending...';
+      submitBtn.disabled = true;
+      
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          document.getElementById('formContainer').querySelector('form').style.display = 'none';
+          document.getElementById('formContainer').querySelector('h3').style.display = 'none';
+          document.getElementById('formContainer').querySelector('p').style.display = 'none';
+          document.getElementById('successMessage').style.display = 'block';
+        } else {
+          throw new Error('Form submission failed');
+        }
+      } catch (error) {
+        alert('Failed to send. Please try again or email us directly at info@reviewhelp.uk');
+        submitBtn.innerHTML = originalBtnText;
+        submitBtn.disabled = false;
+      }
+    });
+    
+    function resetForm() {
+      document.getElementById('contactForm').reset();
+      document.getElementById('formContainer').querySelector('form').style.display = 'block';
+      document.getElementById('formContainer').querySelector('h3').style.display = 'block';
+      document.getElementById('formContainer').querySelector('p').style.display = 'block';
+      document.getElementById('successMessage').style.display = 'none';
+      const submitBtn = document.querySelector('#contactForm button[type="submit"]');
+      submitBtn.innerHTML = '<span class="material-icons" style="font-size: 18px;">send</span> Submit Inquiry';
+      submitBtn.disabled = false;
+    }
+    
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        const href = this.getAttribute('href');
+        if (href.startsWith('#') && href.length > 1 && !href.includes('/')) {
+          e.preventDefault();
+          const target = document.querySelector(href);
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+      });
+    });
+  </script>
+  
+  <style>
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</body>
+</html>

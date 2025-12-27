@@ -13,7 +13,7 @@ A multi-tenant SaaS platform that helps businesses collect authentic customer re
 
 ## Features
 
-- **AI-Powered Templates** — GPT-4o-mini generates personalized review templates on signup
+- **AI-Powered Templates** — Multiple LLMs (OpenRouter) generate personalized, human-like review templates and reviews
 - **Multi-Tenant** — Isolated data per business with role-based access
 - **Stripe Billing** — Subscription tiers (Starter/Pro/Pro Max/Enterprise)
 - **Template Rotation** — Used templates auto-archive; backups promote to active
@@ -29,7 +29,7 @@ A multi-tenant SaaS platform that helps businesses collect authentic customer re
 | Frontend | React 19, Material UI 7 |
 | Backend | Node.js, Express |
 | Database | Supabase (Postgres) |
-| AI | OpenRouter (GPT-4o-mini, Gemma 3 fallback) |
+| AI | OpenRouter (gpt-oss-120b primary, Llama 3, DeepSeek, Nemotron fallback; randomized params for human-like output) |
 | Payments | Stripe |
 | Auth | Supabase Auth |
 | Email | Nodemailer (IONOS SMTP) |
@@ -98,8 +98,13 @@ REACT_APP_SUPABASE_ANON_KEY=eyJ...
 └── scripts/             # Utilities
 ```
 
+
 ## Recent Updates
 
+- ✅ Review generation now uses multiple LLMs (gpt-oss-120b, Llama 3, DeepSeek, Nemotron) with rotation and fallback for every review
+- ✅ Randomized temperature and generation parameters for more human-like, undetectable reviews
+- ✅ Extra post-processing to avoid template-like phrasing, content clustering, and AI markers (Google compliance)
+- ✅ User-selected template is only used as a style reference for the AI, never shown directly
 - ✅ Contact form with email notifications
 - ✅ Enterprise inquiry modal for custom plans
 - ✅ Mobile-responsive landing page

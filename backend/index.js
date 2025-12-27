@@ -17,6 +17,10 @@ const paymentsRoutes = require('./routes/paymentsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5002;
 
+// Trust proxy (required when behind nginx/reverse proxy)
+// This is needed for rate limiting and getting correct client IPs
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 

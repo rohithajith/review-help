@@ -13,8 +13,7 @@ import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
 import { Container, Box, Typography, CircularProgress, Alert, Button } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import TemplateList from './components/TemplateList';
-import EditModal from './components/EditModal';
+import ReviewFlowWizard from './components/ReviewFlowWizard';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
 import './App.css';
@@ -34,7 +33,6 @@ function BusinessTemplatePage() {
   const [businessError, setBusinessError] = useState(null);
   const { templates, loading, error, refresh } = useTemplates(businessId);
   const scrollBg = useScrollGradient();
-  const [editingTemplate, setEditingTemplate] = useState(null);
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -51,47 +49,6 @@ function BusinessTemplatePage() {
     };
     fetchBusiness();
   }, [businessId]);
-
-  const handleEdit = (template) => setEditingTemplate(template);
-  
-  const handleSave = async (updatedTemplate) => {
-    try {
-      if (businessId && updatedTemplate && updatedTemplate.id) {
-        await api.put(`/${businessId}/templates/${updatedTemplate.id}`, { text: updatedTemplate.text });
-      }
-    } catch (err) {
-      console.error('Failed to save template', err);
-    } finally {
-      try {
-        if (typeof refresh === 'function') await refresh(businessId);
-      } catch (refreshErr) {
-        console.error('Error refreshing templates', refreshErr);
-      }
-      setEditingTemplate(null);
-    }
-  };
-
-  const handleCopyAndLeaveReview = async (template, platformUrl = null) => {
-    try {
-      // Archive template and rotate in a new one from backups
-      if (businessId && template && template.id) {
-        await api.post(`/${businessId}/templates/${template.id}/use`, { modifiedText: template.text });
-        if (typeof refresh === 'function') await refresh(businessId);
-      }
-    } catch (err) {
-      console.error('Error archiving template', err);
-      alert('Could not save your changes. Please try again.');
-      return;
-    }
-
-    // Copy text to clipboard
-    try { await navigator.clipboard.writeText(template.text); } catch (e) {}
-
-    // Open the specified platform URL, or fallback to google_review_url, or search
-    const url = platformUrl || business?.google_review_url || 
-      `https://www.google.com/search?q=${encodeURIComponent(business?.name || '')}+reviews`;
-    if (url) window.open(url, '_blank');
-  };
 
   // Loading state
   if (loading) return (
@@ -176,21 +133,13 @@ function BusinessTemplatePage() {
           </Button>
         </Box>
 
-        <TemplateList
+        {/* New Review Flow Wizard */}
+        <ReviewFlowWizard
           templates={templates}
-          onEdit={handleEdit}
-          onCopyAndLeaveReview={handleCopyAndLeaveReview}
+          business={business}
+          businessId={businessId}
+          onRefreshTemplates={() => refresh(businessId)}
         />
-        
-        {editingTemplate && (
-          <EditModal
-            template={editingTemplate}
-            onClose={() => setEditingTemplate(null)}
-            onSave={handleSave}
-            onCopyAndLeaveReview={handleCopyAndLeaveReview}
-            reviewPlatforms={business?.review_platforms || []}
-          />
-        )}
 
         <Footer />
       </Container>

@@ -7,6 +7,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
 const { requirePlan, attachPlanInfo } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
+const reviewGenerationService = require('../services/reviewGenerationService');
 
 // helper to forward async errors to centralized handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -25,6 +26,35 @@ router.put('/business', asyncHandler(businessController.updateBusiness));
 
 // Mark a template as used
 router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.markTemplateAsUsed));
+
+// =============================================================================
+// Customer Review Generation (Public - for QR code flow)
+// Generates a human-like review based on selected prompt and user answers
+// =============================================================================
+router.post('/generate-review', [
+  body('selectedPrompt').isString().trim().isLength({ min: 1 }),
+  body('answers').isObject(),
+], asyncHandler(async (req, res) => {
+  const { selectedPrompt, answers, businessName } = req.body;
+  
+  try {
+    const review = await reviewGenerationService.generateReview({
+      selectedPrompt,
+      answers: answers || {},
+      businessName: businessName || '',
+    });
+    
+    res.json({ review });
+  } catch (err) {
+    console.error('Review generation error:', err.message);
+    // Return the original prompt as fallback
+    res.json({ 
+      review: selectedPrompt,
+      fallback: true,
+      error: 'Generation failed, using selected template'
+    });
+  }
+}));
 
 // Create a dummy owner for development/testing (creates Supabase user + maps to business)
 // Guarded: only allowed when ALLOW_DUMMY_OWNER=true or NODE_ENV != 'production'

@@ -1,18 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, CircularProgress, Alert, Button, Paper, CheckCircle } from '@mui/material';
+import { Box, Typography, CircularProgress, Alert, Button, Paper } from '@mui/material';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import api from '../api';
 
 export default function SignupSuccess() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionData, setSessionData] = useState(null);
+  const [confirmationPending, setConfirmationPending] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
     const verifySession = async () => {
       try {
-        // Get session_id from URL
+        // Get params from URL
         const params = new URLSearchParams(window.location.search || window.location.hash.split('?')[1] || '');
         const sessionId = params.get('session_id');
+        const confirmation = params.get('confirmation');
+        const email = params.get('email');
+
+        // Handle email confirmation pending state
+        if (confirmation === 'pending') {
+          setConfirmationPending(true);
+          setUserEmail(email || '');
+          setLoading(false);
+          return;
+        }
 
         if (!sessionId) {
           setError('No session ID found in URL');
@@ -46,7 +59,48 @@ export default function SignupSuccess() {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 10 }}>
         <CircularProgress />
-        <Typography sx={{ mt: 2 }}>Verifying your payment...</Typography>
+        <Typography sx={{ mt: 2 }}>Verifying...</Typography>
+      </Box>
+    );
+  }
+
+  // Email confirmation pending view
+  if (confirmationPending) {
+    return (
+      <Box sx={{ maxWidth: 500, mx: 'auto', mt: 6, p: 3 }}>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Box sx={{ color: '#10b981', mb: 2 }}>
+            <MailOutlineIcon sx={{ fontSize: 64 }} />
+          </Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 2 }}>
+            Check Your Email
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            We've sent a confirmation link to:
+          </Typography>
+          {userEmail && (
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: 'primary.main' }}>
+              {userEmail}
+            </Typography>
+          )}
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            Click the link in the email to confirm your account, then you can log in and access your dashboard.
+          </Typography>
+          <Alert severity="info" sx={{ mb: 3, textAlign: 'left' }}>
+            <strong>Didn't receive the email?</strong>
+            <br />• Check your spam/junk folder
+            <br />• Make sure you entered the correct email
+            <br />• Wait a few minutes and check again
+          </Alert>
+          <Button
+            variant="contained"
+            size="large"
+            onClick={() => (window.location.hash = '#/login')}
+            sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
+          >
+            Go to Login
+          </Button>
+        </Paper>
       </Box>
     );
   }
