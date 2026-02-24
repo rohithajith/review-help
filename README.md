@@ -1,6 +1,6 @@
 # Review App
 
-A multi-tenant SaaS platform that helps businesses collect authentic customer reviews through customizable templates.
+A multi-tenant SaaS platform that helps businesses collect customer reviews through an in-app-first flow.
 
 ## Quick Start
 
@@ -15,6 +15,21 @@ A multi-tenant SaaS platform that helps businesses collect authentic customer re
 - **Multi-Tenant** — Isolated data per business with role-based access
 - **Stripe Billing** — Subscription tiers (Starter/Pro/Pro Max/Enterprise)
 - **Template Rotation** — Used templates auto-archive; backups promote to active
+- **In-App Review First** — Customers submit rating + review text inside the app before any external channel step
+- **My Reviews** — Every submitted review is stored centrally per business and visible in Business Admin
+
+## Customer Flow (Current)
+
+1. Customer scans QR and lands on `/#/business/:businessId`
+2. Customer selects a review template (if multiple)
+3. Customer submits rating + review text inside the app
+4. Review is saved immediately to that business (`My Reviews`)
+5. Success message is shown: `Review taken`
+6. Post-submit popup offers:
+   - Post on Google
+   - Post on TripAdvisor
+   - Skip
+7. If a channel is selected, the platform link opens and the same review text is available to copy/paste manually
 
 ## Tech Stack
 
@@ -48,9 +63,11 @@ REACT_APP_SUPABASE_ANON_KEY=eyJ...
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/user/onboard` | Create business + generate AI templates |
-| `GET /api/:id/templates` | Get active templates |
-| `POST /api/:id/templates/:tid/use` | Archive & rotate template |
+| `POST /api/users/onboard` | Create business + generate AI templates |
+| `GET /api/:businessId/templates` | Get active templates |
+| `POST /api/:businessId/reviews` | Submit in-app review (rating + review text) |
+| `GET /api/:businessId/reviews` | Get all saved reviews for My Reviews |
+| `POST /api/:businessId/templates/:id/use` | Archive/rotate template (legacy template-use path) |
 | `POST /api/payments/create-checkout-session` | Stripe checkout |
 
 ## Project Structure

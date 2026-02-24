@@ -14,6 +14,20 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 // Get all active templates
 router.get('/templates', asyncHandler(templatesController.getActiveTemplates));
 
+// Submit and save an in-app review
+router.post(
+  '/reviews',
+  [
+    body('rating').isInt({ min: 1, max: 5 }),
+    body('reviewText').isString().trim().isLength({ min: 1 }),
+    body('templateId').optional().isInt({ gt: 0 }),
+  ],
+  asyncHandler(templatesController.submitReview)
+);
+
+// Get all in-app reviews for My Reviews
+router.get('/reviews', asyncHandler(templatesController.getMyReviews));
+
 // Get business details for the current tenant
 router.get('/business', asyncHandler(businessController.getBusiness));
 

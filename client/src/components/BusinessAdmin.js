@@ -25,6 +25,7 @@ import {
   Snackbar,
   Chip,
   CircularProgress,
+  Rating,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -45,7 +46,6 @@ const BusinessAdmin = ({ businessId }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [hasCredentials, setHasCredentials] = useState(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [setupUsername, setSetupUsername] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
@@ -55,6 +55,7 @@ const BusinessAdmin = ({ businessId }) => {
   const [business, setBusiness] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [backupTemplates, setBackupTemplates] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -81,7 +82,6 @@ const BusinessAdmin = ({ businessId }) => {
       // Check if business has credentials configured
       try {
         const response = await api.get(`/businesses/${businessId}/admin/has-credentials`);
-        setHasCredentials(response.data.hasCredentials);
         
         if (response.data.hasCredentials) {
           // Has credentials, show login modal
@@ -189,16 +189,26 @@ const BusinessAdmin = ({ businessId }) => {
     }
   }, [businessId]);
 
+  // Fetch submitted reviews (My Reviews)
+  const fetchReviews = useCallback(async () => {
+    try {
+      const res = await api.get(`/${businessId}/reviews`);
+      setReviews(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+    }
+  }, [businessId]);
+
   // Load all data on mount
   useEffect(() => {
     const loadData = async () => {
       if (!isAuthenticated) return;
       setLoading(true);
-      await Promise.all([fetchBusiness(), fetchTemplates(), fetchBackups()]);
+      await Promise.all([fetchBusiness(), fetchTemplates(), fetchBackups(), fetchReviews()]);
       setLoading(false);
     };
     if (businessId && isAuthenticated) loadData();
-  }, [businessId, isAuthenticated, fetchBusiness, fetchTemplates, fetchBackups]);
+  }, [businessId, isAuthenticated, fetchBusiness, fetchTemplates, fetchBackups, fetchReviews]);
 
   // Create template handler
   const handleCreateTemplate = async () => {
@@ -215,6 +225,7 @@ const BusinessAdmin = ({ businessId }) => {
       setAlertVariant('success');
       setShowCreateModal(false);
       setCurrentTemplate({ text: '' });
+      await fetchReviews();
     } catch (error) {
       console.error('Error creating template:', error);
       setAlertMessage('Error creating template');
@@ -235,6 +246,7 @@ const BusinessAdmin = ({ businessId }) => {
       setShowEditModal(false);
       setAlertMessage('Template updated successfully');
       setAlertVariant('success');
+      await fetchReviews();
     } catch (error) {
       console.error('Error updating template:', error);
       setAlertMessage('Error updating template');
@@ -255,6 +267,7 @@ const BusinessAdmin = ({ businessId }) => {
       setShowDeleteConfirm(false);
       setAlertMessage('Template deleted successfully');
       setAlertVariant('success');
+      await fetchReviews();
     } catch (error) {
       console.error('Error deleting template:', error);
       setAlertMessage('Error deleting template');
@@ -570,6 +583,59 @@ const BusinessAdmin = ({ businessId }) => {
           </Card>
         </Grid>
       </Grid>
+
+      <Box sx={{ mt: 3 }}>
+        <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <CardHeader
+            title={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                My Reviews
+                <Chip label={reviews.length} size="small" color="primary" />
+              </Box>
+            }
+            sx={{
+              background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
+              '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
+            }}
+          />
+          <CardContent>
+            <TableContainer component={Paper} sx={{ maxHeight: '50vh' }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ width: 160 }}>Date</TableCell>
+                    <TableCell sx={{ width: 130 }}>Rating</TableCell>
+                    <TableCell>Review</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {reviews.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center">
+                        <Typography color="text.secondary">No submitted reviews yet</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    reviews.map((review) => (
+                      <TableRow key={review.id} hover>
+                        <TableCell>
+                          {new Date(review.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Rating value={Number(review.rating) || 0} precision={1} readOnly size="small" />
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'pre-wrap' }}>
+                          {review.review_text}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+      </Box>
 
       {/* Create Template Dialog */}
       <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)} maxWidth="sm" fullWidth>

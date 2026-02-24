@@ -157,6 +157,19 @@ async function ensureAdminSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_archived_templates_business_id ON archived_templates(business_id)`);
 
+  // Customer reviews submitted in-app (My Reviews source of truth)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS customer_reviews (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL,
+      template_id INTEGER,
+      rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+      review_text TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_customer_reviews_business_id ON customer_reviews(business_id)`);
+
   // Users table for business owners (Supabase auth users are referenced by UUID)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -193,7 +206,7 @@ async function ensureAdminSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_admin_credentials_business_id ON business_admin_credentials(business_id)`);
   
-  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, business_admin_credentials)');
+  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews, business_admin_credentials)');
 }
 
 /**

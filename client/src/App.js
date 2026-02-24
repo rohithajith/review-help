@@ -11,10 +11,27 @@ import NavBar from './components/Navbar';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
-import { Container, Box, Typography, CircularProgress, Alert, Button } from '@mui/material';
+import {
+  Container,
+  Box,
+  Typography,
+  CircularProgress,
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  TextField,
+  Rating,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+} from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import TemplateList from './components/TemplateList';
-import EditModal from './components/EditModal';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
 import './App.css';
@@ -34,7 +51,13 @@ function BusinessTemplatePage() {
   const [businessError, setBusinessError] = useState(null);
   const { templates, loading, error, refresh } = useTemplates(businessId);
   const scrollBg = useScrollGradient();
-  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [reviewText, setReviewText] = useState('');
+  const [rating, setRating] = useState(5);
+  const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showChannelPopup, setShowChannelPopup] = useState(false);
+  const [lastSavedReview, setLastSavedReview] = useState('');
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -52,45 +75,70 @@ function BusinessTemplatePage() {
     fetchBusiness();
   }, [businessId]);
 
-  const handleEdit = (template) => setEditingTemplate(template);
-  
-  const handleSave = async (updatedTemplate) => {
+  useEffect(() => {
+    if (!Array.isArray(templates) || templates.length === 0) {
+      setSelectedTemplateId(null);
+      return;
+    }
+    if (!selectedTemplateId || !templates.some((t) => t.id === selectedTemplateId)) {
+      const first = templates[0];
+      setSelectedTemplateId(first.id);
+      setReviewText(first.text || '');
+    }
+  }, [templates, selectedTemplateId]);
+
+  const handleSelectTemplate = (template) => {
+    setSelectedTemplateId(template.id);
+    setReviewText(template.text || '');
+  };
+
+  const getChannelUrl = (channelName) => {
+    const normalized = String(channelName || '').toLowerCase();
+    const configured = Array.isArray(business?.review_platforms)
+      ? business.review_platforms.find((p) => String(p.name || '').toLowerCase().includes(normalized))
+      : null;
+    if (configured && configured.url) return configured.url;
+    if (normalized === 'google') {
+      if (business?.google_review_url) return business.google_review_url;
+      return `https://www.google.com/search?q=${encodeURIComponent(business?.name || '')}+reviews`;
+    }
+    if (normalized === 'tripadvisor') {
+      return `https://www.tripadvisor.com/Search?q=${encodeURIComponent(business?.name || '')}`;
+    }
+    return null;
+  };
+
+  const handleSubmitInAppReview = async () => {
+    const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+    if (!selectedTemplate || !reviewText.trim() || !rating) return;
+    setSubmitting(true);
     try {
-      if (businessId && updatedTemplate && updatedTemplate.id) {
-        await api.put(`/${businessId}/templates/${updatedTemplate.id}`, { text: updatedTemplate.text });
-      }
+      await api.post(`/${businessId}/reviews`, {
+        templateId: selectedTemplate.id,
+        rating,
+        reviewText: reviewText.trim(),
+      });
+      setLastSavedReview(reviewText.trim());
+      setSuccessMessage('Review taken');
+      setShowChannelPopup(true);
+      if (typeof refresh === 'function') await refresh(businessId);
     } catch (err) {
-      console.error('Failed to save template', err);
+      console.error('Error submitting review', err);
+      setSuccessMessage('Could not save your review. Please try again.');
     } finally {
-      try {
-        if (typeof refresh === 'function') await refresh(businessId);
-      } catch (refreshErr) {
-        console.error('Error refreshing templates', refreshErr);
-      }
-      setEditingTemplate(null);
+      setSubmitting(false);
     }
   };
 
-  const handleCopyAndLeaveReview = async (template, platformUrl = null) => {
+  const handlePostToChannel = async (channelName) => {
+    const url = getChannelUrl(channelName);
     try {
-      // Archive template and rotate in a new one from backups
-      if (businessId && template && template.id) {
-        await api.post(`/${businessId}/templates/${template.id}/use`, { modifiedText: template.text });
-        if (typeof refresh === 'function') await refresh(businessId);
-      }
-    } catch (err) {
-      console.error('Error archiving template', err);
-      alert('Could not save your changes. Please try again.');
-      return;
+      await navigator.clipboard.writeText(lastSavedReview || reviewText || '');
+    } catch (e) {
+      // ignore clipboard permission failures
     }
-
-    // Copy text to clipboard
-    try { await navigator.clipboard.writeText(template.text); } catch (e) {}
-
-    // Open the specified platform URL, or fallback to google_review_url, or search
-    const url = platformUrl || business?.google_review_url || 
-      `https://www.google.com/search?q=${encodeURIComponent(business?.name || '')}+reviews`;
     if (url) window.open(url, '_blank');
+    setShowChannelPopup(false);
   };
 
   // Loading state
@@ -176,21 +224,118 @@ function BusinessTemplatePage() {
           </Button>
         </Box>
 
-        <TemplateList
-          templates={templates}
-          onEdit={handleEdit}
-          onCopyAndLeaveReview={handleCopyAndLeaveReview}
-        />
-        
-        {editingTemplate && (
-          <EditModal
-            template={editingTemplate}
-            onClose={() => setEditingTemplate(null)}
-            onSave={handleSave}
-            onCopyAndLeaveReview={handleCopyAndLeaveReview}
-            reviewPlatforms={business?.review_platforms || []}
+        <Snackbar
+          open={!!successMessage}
+          autoHideDuration={3000}
+          onClose={() => setSuccessMessage('')}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={() => setSuccessMessage('')} severity={successMessage === 'Review taken' ? 'success' : 'error'}>
+            {successMessage}
+          </Alert>
+        </Snackbar>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 700 }}>
+            1) Select template
+          </Typography>
+          {templates.length > 1 ? (
+            <Grid container spacing={2}>
+              {templates.map((template) => (
+                <Grid item xs={12} md={6} key={template.id}>
+                  <Card
+                    sx={{
+                      borderRadius: 2,
+                      border: '2px solid',
+                      borderColor: selectedTemplateId === template.id ? 'primary.main' : 'divider',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => handleSelectTemplate(template)}
+                  >
+                    <CardContent>
+                      <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {template.text}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Card sx={{ borderRadius: 2 }}>
+              <CardContent>
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {templates[0]?.text || 'No templates available'}
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+
+        <Box sx={{ mb: 4, textAlign: 'left' }}>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 700 }}>
+            2) Submit once inside the app
+          </Typography>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 0.5 }}>
+              Rating
+            </Typography>
+            <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
+          </Box>
+          <TextField
+            fullWidth
+            multiline
+            rows={5}
+            label="Your review"
+            value={reviewText}
+            onChange={(e) => setReviewText(e.target.value)}
           />
-        )}
+          <Box sx={{ mt: 2 }}>
+            <Button
+              variant="contained"
+              onClick={handleSubmitInAppReview}
+              disabled={submitting || !selectedTemplateId || !rating || !reviewText.trim()}
+            >
+              {submitting ? 'Submitting...' : 'Submit Review'}
+            </Button>
+          </Box>
+        </Box>
+
+        <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Would you also like to post this on Google / TripAdvisor?</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Review text is ready. You can copy and paste it manually on the external platform.
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              value={lastSavedReview}
+              InputProps={{ readOnly: true }}
+              sx={{ mb: 2 }}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => navigator.clipboard.writeText(lastSavedReview || '')}
+            >
+              Copy Review Text
+            </Button>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button startIcon={<OpenInNewIcon />} onClick={() => handlePostToChannel('Google')}>
+              Post on Google
+            </Button>
+            <Button startIcon={<OpenInNewIcon />} onClick={() => handlePostToChannel('TripAdvisor')}>
+              Post on TripAdvisor
+            </Button>
+            <Button variant="contained" onClick={() => setShowChannelPopup(false)}>
+              Skip
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Footer />
       </Container>

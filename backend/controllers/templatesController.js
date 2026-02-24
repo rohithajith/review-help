@@ -12,6 +12,62 @@ exports.getActiveTemplates = async (req, res, next) => {
   }
 };
 
+// Submit a customer review directly to My Reviews (in-app review first)
+exports.submitReview = async (req, res, next) => {
+  const pool = req.db;
+  const businessId = req.businessId;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const templateId = req.body.templateId ? Number(req.body.templateId) : null;
+  const rating = Number(req.body.rating);
+  const reviewText = String(req.body.reviewText || '').trim();
+
+  try {
+    if (templateId) {
+      const check = await pool.query(
+        'SELECT id FROM review_templates WHERE id = $1 AND business_id = $2 LIMIT 1',
+        [templateId, businessId]
+      );
+      if (check.rowCount === 0) {
+        return res.status(404).json({ message: 'Template not found for this business' });
+      }
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO customer_reviews (business_id, template_id, rating, review_text, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id, business_id, template_id, rating, review_text, created_at`,
+      [businessId, templateId, rating, reviewText]
+    );
+
+    res.status(201).json({
+      message: 'Review taken',
+      review: inserted.rows[0],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// List all submitted reviews for this business (My Reviews)
+exports.getMyReviews = async (req, res, next) => {
+  const pool = req.db;
+  const businessId = req.businessId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, business_id, template_id, rating, review_text, created_at
+       FROM customer_reviews
+       WHERE business_id = $1
+       ORDER BY created_at DESC`,
+      [businessId]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Mark a template as used, archive the edited text, rotate in a backup, and trigger generation when needed
 const generationService = require('../services/generationService');
 
