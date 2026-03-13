@@ -12,8 +12,8 @@ set -euo pipefail
 #
 # What it does:
 #   1. Loads environment from backend/.env
-#   2. Starts the backend API server (port 3001)
-#   3. Starts the React dev server (port 3000)
+#   2. Starts the backend API server (default port 4000)
+#   3. Starts the React dev server (default port 3004)
 #   4. Opens admin and template pages in browser (if available)
 # =============================================================================
 
@@ -26,6 +26,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Startup tuning (can be overridden via env)
+STARTUP_SLEEP_SECONDS="${STARTUP_SLEEP_SECONDS:-2}"
+BACKEND_READY_RETRIES="${BACKEND_READY_RETRIES:-45}"
+FRONTEND_READY_RETRIES="${FRONTEND_READY_RETRIES:-120}"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}   Review App - Starting Services${NC}"
@@ -73,22 +78,33 @@ sleep 2
 echo ""
 # Ensure backend uses PORT from backend/.env, default to 4000
 BACKEND_PORT=${PORT:-4000}
+# If desired backend port is busy, choose next free port
+for p in $(seq $BACKEND_PORT $((BACKEND_PORT + 10))); do
+    if lsof -iTCP:${p} -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "Backend port ${p} is in use, trying next..."
+        continue
+    else
+        BACKEND_PORT=${p}
+        break
+    fi
+done
 echo -e "${BLUE}Starting backend server on port ${BACKEND_PORT}...${NC}"
 cd "$BACKEND"
 PORT=${BACKEND_PORT} nohup node index.js > /tmp/review-backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > /tmp/review-backend.pid
 echo -e "${GREEN}✓${NC} Backend started (PID: $BACKEND_PID)"
+sleep "$STARTUP_SLEEP_SECONDS"
 
 # Wait for backend to be ready
 echo "Waiting for backend to be ready..."
-for i in {1..30}; do
-    if curl -s "http://localhost:${PORT:-3001}/" > /dev/null 2>&1; then
+for ((i=1; i<=BACKEND_READY_RETRIES; i++)); do
+    if curl -s "http://localhost:${BACKEND_PORT}/" > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} Backend is ready"
         break
     fi
     sleep 1
-    if [ $i -eq 30 ]; then
+    if [ $i -eq "$BACKEND_READY_RETRIES" ]; then
         echo -e "${YELLOW}Warning: Backend may not be fully ready${NC}"
     fi
 done
@@ -109,21 +125,22 @@ for p in $(seq $FRONTEND_PORT $((FRONTEND_PORT + 10))); do
     fi
 done
 echo -e "${BLUE}Using frontend port ${FRONTEND_PORT}${NC}"
-PORT=${FRONTEND_PORT} BROWSER=none nohup npm start > /tmp/review-client.log 2>&1 &
+PORT=${FRONTEND_PORT} REACT_APP_API_URL="http://localhost:${BACKEND_PORT}/api" BROWSER=none nohup npm start > /tmp/review-client.log 2>&1 &
 CLIENT_PID=$!
 echo $CLIENT_PID > /tmp/review-client.pid
 echo -e "${GREEN}✓${NC} Frontend starting (PID: $CLIENT_PID)"
+sleep "$STARTUP_SLEEP_SECONDS"
 
 # Wait for frontend to be ready
 echo "Waiting for frontend to be ready (this may take 30-60 seconds)..."
 # Wait for frontend to be ready on the chosen port
-for i in {1..90}; do
+for ((i=1; i<=FRONTEND_READY_RETRIES; i++)); do
     if curl -s "http://localhost:${FRONTEND_PORT}/" > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} Frontend is ready"
         break
     fi
     sleep 1
-    if [ $i -eq 90 ]; then
+    if [ $i -eq "$FRONTEND_READY_RETRIES" ]; then
         echo -e "${YELLOW}Warning: Frontend may still be compiling. Check /tmp/review-client.log${NC}"
     fi
 done

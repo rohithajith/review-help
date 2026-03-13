@@ -28,6 +28,15 @@ router.post(
 // Get all in-app reviews for My Reviews
 router.get('/reviews', asyncHandler(templatesController.getMyReviews));
 
+// Revoke consent for a specific review (admin feature)
+router.post(
+  '/reviews/:id/consent/revoke',
+  authMiddleware,
+  ownerMiddleware,
+  [param('id').isInt({ gt: 0 })],
+  asyncHandler(templatesController.revokeReviewConsent)
+);
+
 // Get business details for the current tenant
 router.get('/business', asyncHandler(businessController.getBusiness));
 

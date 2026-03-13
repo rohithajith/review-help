@@ -1,4 +1,13 @@
 const { validationResult } = require('express-validator');
+const crypto = require('crypto');
+const { getAdminPool } = require('../tenantManager');
+
+const CONSENT_STATEMENT_VERSION = 'v1';
+const CONSENT_STATEMENT_TEXT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
+
+function hashConsentToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 // Get all active templates for the tenant
 exports.getActiveTemplates = async (req, res, next) => {
@@ -22,6 +31,11 @@ exports.submitReview = async (req, res, next) => {
   const templateId = req.body.templateId ? Number(req.body.templateId) : null;
   const rating = Number(req.body.rating);
   const reviewText = String(req.body.reviewText || '').trim();
+  const consentAccepted = req.body.consentAccepted === true || req.body.consentAccepted === 'true';
+
+  if (templateId && !consentAccepted) {
+    return res.status(400).json({ message: 'Consent is required before submitting a template-based review' });
+  }
 
   try {
     if (templateId) {
@@ -34,16 +48,36 @@ exports.submitReview = async (req, res, next) => {
       }
     }
 
+    const revokeToken = consentAccepted ? crypto.randomBytes(32).toString('hex') : null;
+    const consentTokenHash = revokeToken ? hashConsentToken(revokeToken) : null;
+
     const inserted = await pool.query(
-      `INSERT INTO customer_reviews (business_id, template_id, rating, review_text, created_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       RETURNING id, business_id, template_id, rating, review_text, created_at`,
-      [businessId, templateId, rating, reviewText]
+      `INSERT INTO customer_reviews (
+        business_id, template_id, rating, review_text, created_at,
+        consent_granted, consent_granted_at, consent_statement_version, consent_statement_text, consent_token_hash
+      )
+      VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9)
+      RETURNING id, business_id, template_id, rating, review_text, created_at, consent_granted, consent_granted_at, consent_revoked_at`,
+      [
+        businessId,
+        templateId,
+        rating,
+        reviewText,
+        consentAccepted,
+        consentAccepted ? new Date() : null,
+        consentAccepted ? CONSENT_STATEMENT_VERSION : null,
+        consentAccepted ? CONSENT_STATEMENT_TEXT : null,
+        consentTokenHash,
+      ]
     );
+    const host = (typeof req.get === 'function' && req.get('host')) ? req.get('host') : 'localhost';
+    const protocol = req.protocol || 'http';
 
     res.status(201).json({
       message: 'Review taken',
       review: inserted.rows[0],
+      revokeConsentUrl: revokeToken ? `${protocol}://${host}/#/reviews/revoke-consent?token=${encodeURIComponent(revokeToken)}` : null,
+      consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });
   } catch (err) {
     next(err);
@@ -56,13 +90,61 @@ exports.getMyReviews = async (req, res, next) => {
   const businessId = req.businessId;
   try {
     const { rows } = await pool.query(
-      `SELECT id, business_id, template_id, rating, review_text, created_at
+      `SELECT id, business_id, template_id, rating, review_text, created_at,
+              consent_granted, consent_granted_at, consent_revoked_at
        FROM customer_reviews
        WHERE business_id = $1
        ORDER BY created_at DESC`,
       [businessId]
     );
     res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Revoke consent by public token (idempotent)
+exports.revokeConsentByToken = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const token = String(req.body.token || '').trim();
+  if (!token) return res.status(400).json({ message: 'token is required' });
+
+  try {
+    const pool = getAdminPool();
+    const tokenHash = hashConsentToken(token);
+    const existing = await pool.query(
+      'SELECT id, consent_revoked_at FROM customer_reviews WHERE consent_token_hash = $1 LIMIT 1',
+      [tokenHash]
+    );
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ message: 'Invalid or expired revocation token' });
+    }
+
+    if (existing.rows[0].consent_revoked_at) {
+      return res.json({
+        message: 'Consent already revoked',
+        revoked: true,
+        alreadyRevoked: true,
+      });
+    }
+
+    const updated = await pool.query(
+      `UPDATE customer_reviews
+       SET consent_revoked_at = NOW()
+       WHERE consent_token_hash = $1
+       RETURNING id, consent_revoked_at`,
+      [tokenHash]
+    );
+
+    return res.json({
+      message: 'Consent revoked successfully',
+      revoked: true,
+      alreadyRevoked: false,
+      reviewId: updated.rows[0].id,
+      revokedAt: updated.rows[0].consent_revoked_at,
+    });
   } catch (err) {
     next(err);
   }
@@ -308,6 +390,42 @@ exports.deleteBackupTemplate = async (req, res, next) => {
     if (check.rowCount === 0) return res.status(404).json({ message: 'Backup template not found' });
     await pool.query('DELETE FROM backup_templates WHERE id = $1 AND business_id = $2', [id, businessId]);
     res.json({ message: 'Backup template deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Revoke consent for a specific review (admin feature)
+exports.revokeReviewConsent = async (req, res, next) => {
+  const pool = req.db;
+  const businessId = req.businessId;
+  const id = Number(req.params.id);
+
+  try {
+    const existing = await pool.query(
+      'SELECT id, consent_revoked_at FROM customer_reviews WHERE id = $1 AND business_id = $2 LIMIT 1',
+      [id, businessId]
+    );
+    if (existing.rowCount === 0) return res.status(404).json({ message: 'Review not found' });
+
+    if (existing.rows[0].consent_revoked_at) {
+      return res.json({ message: 'Consent already revoked', revoked: true, alreadyRevoked: true });
+    }
+
+    const updated = await pool.query(
+      `UPDATE customer_reviews
+       SET consent_revoked_at = NOW()
+       WHERE id = $1 AND business_id = $2
+       RETURNING id, consent_revoked_at`,
+      [id, businessId]
+    );
+    return res.json({
+      message: 'Consent revoked successfully',
+      revoked: true,
+      alreadyRevoked: false,
+      reviewId: updated.rows[0].id,
+      revokedAt: updated.rows[0].consent_revoked_at,
+    });
   } catch (err) {
     next(err);
   }

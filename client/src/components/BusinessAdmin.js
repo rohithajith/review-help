@@ -275,6 +275,19 @@ const BusinessAdmin = ({ businessId }) => {
     }
   };
 
+  const handleRevokeReviewConsent = async (reviewId) => {
+    try {
+      await api.post(`/${businessId}/reviews/${reviewId}/consent/revoke`);
+      setAlertMessage('Consent revoked successfully');
+      setAlertVariant('success');
+      await fetchReviews();
+    } catch (error) {
+      console.error('Error revoking review consent:', error);
+      setAlertMessage(error?.response?.data?.message || 'Error revoking consent');
+      setAlertVariant('error');
+    }
+  };
+
   // Show loading spinner while checking auth
   if (checkingAuth) {
     return (
@@ -601,22 +614,24 @@ const BusinessAdmin = ({ businessId }) => {
           <CardContent>
             <TableContainer component={Paper} sx={{ maxHeight: '50vh' }}>
               <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ width: 160 }}>Date</TableCell>
-                    <TableCell sx={{ width: 130 }}>Rating</TableCell>
-                    <TableCell>Review</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {reviews.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} align="center">
-                        <Typography color="text.secondary">No submitted reviews yet</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    reviews.map((review) => (
+	                <TableHead>
+	                  <TableRow>
+	                    <TableCell sx={{ width: 160 }}>Date</TableCell>
+	                    <TableCell sx={{ width: 130 }}>Rating</TableCell>
+	                    <TableCell>Review</TableCell>
+                    <TableCell sx={{ width: 140 }}>Consent</TableCell>
+                    <TableCell sx={{ width: 130 }}>Actions</TableCell>
+	                  </TableRow>
+	                </TableHead>
+	                <TableBody>
+	                  {reviews.length === 0 ? (
+	                    <TableRow>
+	                      <TableCell colSpan={5} align="center">
+	                        <Typography color="text.secondary">No submitted reviews yet</Typography>
+	                      </TableCell>
+	                    </TableRow>
+	                  ) : (
+	                    reviews.map((review) => (
                       <TableRow key={review.id} hover>
                         <TableCell>
                           {new Date(review.created_at).toLocaleString()}
@@ -624,14 +639,41 @@ const BusinessAdmin = ({ businessId }) => {
                         <TableCell>
                           <Rating value={Number(review.rating) || 0} precision={1} readOnly size="small" />
                         </TableCell>
-                        <TableCell sx={{ whiteSpace: 'pre-wrap' }}>
-                          {review.review_text}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+	                        <TableCell sx={{ whiteSpace: 'pre-wrap' }}>
+	                          {review.review_text}
+	                        </TableCell>
+                          <TableCell>
+                            {review.consent_revoked_at ? (
+                              <Chip
+                                size="small"
+                                color="warning"
+                                label={`Revoked (${new Date(review.consent_revoked_at).toLocaleDateString()})`}
+                              />
+                            ) : review.consent_granted ? (
+                              <Chip size="small" color="success" label="Consented" />
+                            ) : (
+                              <Chip size="small" label="No consent" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {review.consent_granted && !review.consent_revoked_at && localStorage.getItem('supabase_access_token') ? (
+                              <Button
+                                size="small"
+                                color="warning"
+                                variant="outlined"
+                                onClick={() => handleRevokeReviewConsent(review.id)}
+                              >
+                                Revoke
+                              </Button>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">-</Typography>
+                            )}
+                          </TableCell>
+	                      </TableRow>
+	                    ))
+	                  )}
+	                </TableBody>
+	              </Table>
             </TableContainer>
           </CardContent>
         </Card>

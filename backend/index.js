@@ -7,6 +7,7 @@ const templatesRoutes = require('./routes/templatesRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const userRoutes = require('./routes/userRoutes');
 const logsRoutes = require('./routes/logsRoutes');
+const consentRoutes = require('./routes/consentRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
 const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
@@ -78,6 +79,9 @@ app.use('/api/payments', paymentsRoutes);
 
 // Client error logs ingestion (POST) and retrieval (GET)
 app.use('/api/_client-log', logsRoutes);
+
+// Public review consent routes (token-based revocation)
+app.use('/api/reviews', consentRoutes);
 
 // Tenant-scoped routes mounted under /api/:businessId
 app.use('/api/:businessId', businessMiddleware, templatesRoutes);

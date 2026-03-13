@@ -168,7 +168,14 @@ async function ensureAdminSchema() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_granted BOOLEAN`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_granted_at TIMESTAMP`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_statement_version TEXT`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_statement_text TEXT`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_revoked_at TIMESTAMP`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_token_hash TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_customer_reviews_business_id ON customer_reviews(business_id)`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_reviews_consent_token_hash ON customer_reviews(consent_token_hash) WHERE consent_token_hash IS NOT NULL`);
 
   // Users table for business owners (Supabase auth users are referenced by UUID)
   await pool.query(`
@@ -206,7 +213,7 @@ async function ensureAdminSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_admin_credentials_business_id ON business_admin_credentials(business_id)`);
   
-  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews, business_admin_credentials)');
+  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews+consent, business_admin_credentials)');
 }
 
 /**

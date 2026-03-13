@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from './api';
-import { HashRouter as Router, Route, Routes, useParams, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Route, Routes, useParams, useLocation, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Landing from './components/Landing';
 import Pricing from './components/Pricing';
@@ -28,9 +28,13 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  Checkbox,
+  FormControlLabel,
+  Paper,
+  Stack,
+  Chip,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
@@ -41,6 +45,8 @@ const businessLogos = {
   2: '/logos/myras-fish-bar.png', // Myra's Fish Bar
 };
 
+const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
+
 // =============================================================================
 // Business Template Page - Each business owner gets their unique URL
 // Example: http://your-domain.com/#/business/2 for Myra's Fish Bar
@@ -50,14 +56,27 @@ function BusinessTemplatePage() {
   const [business, setBusiness] = useState(null);
   const [businessError, setBusinessError] = useState(null);
   const { templates, loading, error, refresh } = useTemplates(businessId);
-  const scrollBg = useScrollGradient();
+  const scrollBg = useScrollGradient({
+    topColor: '#f4f7fb',
+    middleColor: '#edf2f8',
+    bottomColor: '#e5edf7',
+  });
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
-  const [reviewText, setReviewText] = useState('');
+  const [ownReviewText, setOwnReviewText] = useState('');
+  const [templateReviewText, setTemplateReviewText] = useState('');
   const [rating, setRating] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [copyToast, setCopyToast] = useState('');
   const [showChannelPopup, setShowChannelPopup] = useState(false);
   const [lastSavedReview, setLastSavedReview] = useState('');
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [revokeConsentUrl, setRevokeConsentUrl] = useState('');
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [templateEditorText, setTemplateEditorText] = useState('');
+  const [showTemplateAssist, setShowTemplateAssist] = useState(false);
+  const [showPermissionPopup, setShowPermissionPopup] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState(null);
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -80,16 +99,35 @@ function BusinessTemplatePage() {
       setSelectedTemplateId(null);
       return;
     }
-    if (!selectedTemplateId || !templates.some((t) => t.id === selectedTemplateId)) {
-      const first = templates[0];
-      setSelectedTemplateId(first.id);
-      setReviewText(first.text || '');
+    if (selectedTemplateId && !templates.some((t) => t.id === selectedTemplateId)) {
+      setSelectedTemplateId(null);
     }
   }, [templates, selectedTemplateId]);
 
   const handleSelectTemplate = (template) => {
+    if (!consentAccepted) {
+      setPendingTemplate(template);
+      setShowPermissionPopup(true);
+      return;
+    }
     setSelectedTemplateId(template.id);
-    setReviewText(template.text || '');
+    setTemplateEditorText(template.text || '');
+    setShowTemplateEditor(true);
+  };
+
+  const handleConfirmPermissionForTemplate = () => {
+    if (!consentAccepted || !pendingTemplate) return;
+    setSelectedTemplateId(pendingTemplate.id);
+    setTemplateEditorText(pendingTemplate.text || '');
+    setShowPermissionPopup(false);
+    setShowTemplateEditor(true);
+    setPendingTemplate(null);
+  };
+
+  const handleUseEditedTemplate = () => {
+    setTemplateReviewText(templateEditorText || '');
+    setShowTemplateEditor(false);
+    setSuccessMessage('Template review is ready to submit.');
   };
 
   const getChannelUrl = (channelName) => {
@@ -108,17 +146,23 @@ function BusinessTemplatePage() {
     return null;
   };
 
-  const handleSubmitInAppReview = async () => {
-    const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
-    if (!selectedTemplate || !reviewText.trim() || !rating) return;
+  const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false }) => {
+    if (!text.trim() || !rating) return;
+    if (requireConsent && !consentAccepted) {
+      setShowTemplateAssist(true);
+      setShowPermissionPopup(true);
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.post(`/${businessId}/reviews`, {
-        templateId: selectedTemplate.id,
+      const response = await api.post(`/${businessId}/reviews`, {
+        templateId,
         rating,
-        reviewText: reviewText.trim(),
+        reviewText: text.trim(),
+        consentAccepted: requireConsent ? consentAccepted : false,
       });
-      setLastSavedReview(reviewText.trim());
+      setLastSavedReview(text.trim());
+      setRevokeConsentUrl(response?.data?.revokeConsentUrl || '');
       setSuccessMessage('Review taken');
       setShowChannelPopup(true);
       if (typeof refresh === 'function') await refresh(businessId);
@@ -130,10 +174,28 @@ function BusinessTemplatePage() {
     }
   };
 
+  const handleSubmitOwnReview = async () => {
+    if (!ownReviewText.trim()) return;
+    try {
+      await navigator.clipboard.writeText(ownReviewText.trim());
+      setCopyToast('Copied to clipboard');
+    } catch (e) {
+      setCopyToast('Could not copy automatically');
+    }
+    setLastSavedReview(ownReviewText.trim());
+    setRevokeConsentUrl('');
+    setShowChannelPopup(true);
+  };
+
+  const handleSubmitTemplateReview = () => {
+    if (!selectedTemplateId) return;
+    submitReviewAndOpenChannels({ text: templateReviewText, templateId: selectedTemplateId, requireConsent: true });
+  };
+
   const handlePostToChannel = async (channelName) => {
     const url = getChannelUrl(channelName);
     try {
-      await navigator.clipboard.writeText(lastSavedReview || reviewText || '');
+      await navigator.clipboard.writeText(lastSavedReview || ownReviewText || templateReviewText || '');
     } catch (e) {
       // ignore clipboard permission failures
     }
@@ -167,43 +229,49 @@ function BusinessTemplatePage() {
       className="App" 
       sx={{ 
         minHeight: '100vh',
-        background: scrollBg, 
-        transition: 'background 300ms linear'
+        background: `
+          radial-gradient(circle at 8% 0%, rgba(16, 185, 129, 0.14) 0%, rgba(16, 185, 129, 0) 38%),
+          radial-gradient(circle at 92% 4%, rgba(30, 60, 114, 0.12) 0%, rgba(30, 60, 114, 0) 42%),
+          ${scrollBg}
+        `,
+        transition: 'background 300ms linear',
       }}
     >
-      <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 2.5, md: 4 }, textAlign: 'left' }}>
         {/* Business Logo and Welcome Message */}
         {businessLogos[businessId] && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', justifyContent: 'center', mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', justifyContent: 'center', mb: 3 }}>
             <Box
               component="img"
               src={businessLogos[businessId]}
               alt={business?.name || 'Business Logo'}
               sx={{
-                height: { xs: 80, md: 100 },
+                height: { xs: 68, md: 84 },
                 width: 'auto',
                 borderRadius: 2,
+                boxShadow: '0 10px 28px rgba(23, 37, 84, 0.14)',
               }}
             />
-            {business?.welcome_message && (
-              <Typography variant="h6" color="text.secondary" sx={{ textAlign: 'center' }}>
-                {business.welcome_message}
+            <Box sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+              <Typography variant="h4" sx={{ color: '#13243f', fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.15 }}>
+                {business?.name || 'Review'}
               </Typography>
-            )}
+              <Typography variant="body1" sx={{ color: '#475569', mt: 0.5 }}>
+                {business?.welcome_message || 'Share your experience in a few words.'}
+              </Typography>
+            </Box>
           </Box>
         )}
 
         {/* Business Name Header (if no logo configured) */}
         {!businessLogos[businessId] && business?.name && (
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Typography variant="h4" color="primary">
+          <Box sx={{ textAlign: 'center', mb: 3 }}>
+            <Typography variant="h4" sx={{ color: '#13243f', fontWeight: 700, letterSpacing: '-0.01em' }}>
               {business.name}
             </Typography>
-            {business?.welcome_message && (
-              <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-                {business.welcome_message}
-              </Typography>
-            )}
+            <Typography variant="body1" sx={{ color: '#475569', mt: 1 }}>
+              {business?.welcome_message || 'Share your experience in a few words.'}
+            </Typography>
           </Box>
         )}
 
@@ -234,110 +302,359 @@ function BusinessTemplatePage() {
             {successMessage}
           </Alert>
         </Snackbar>
-
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 700 }}>
-            1) Select template
-          </Typography>
-          {templates.length > 1 ? (
-            <Grid container spacing={2}>
-              {templates.map((template) => (
-                <Grid item xs={12} md={6} key={template.id}>
-                  <Card
-                    sx={{
-                      borderRadius: 2,
-                      border: '2px solid',
-                      borderColor: selectedTemplateId === template.id ? 'primary.main' : 'divider',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => handleSelectTemplate(template)}
-                  >
-                    <CardContent>
-                      <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                        {template.text}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Card sx={{ borderRadius: 2 }}>
-              <CardContent>
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                  {templates[0]?.text || 'No templates available'}
-                </Typography>
-              </CardContent>
-            </Card>
-          )}
-        </Box>
-
-        <Box sx={{ mb: 4, textAlign: 'left' }}>
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 700 }}>
-            2) Submit once inside the app
-          </Typography>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ mb: 0.5 }}>
-              Rating
-            </Typography>
-            <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
+        <Snackbar
+          open={!!copyToast}
+          autoHideDuration={2200}
+          onClose={() => setCopyToast('')}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Box
+            sx={{
+              bgcolor: 'rgba(55, 65, 81, 0.95)',
+              color: '#fff',
+              px: 2,
+              py: 1,
+              borderRadius: 999,
+              fontSize: 14,
+              fontWeight: 500,
+              boxShadow: '0 8px 22px rgba(15, 23, 42, 0.35)',
+            }}
+          >
+            {copyToast}
           </Box>
-          <TextField
-            fullWidth
-            multiline
-            rows={5}
-            label="Your review"
-            value={reviewText}
-            onChange={(e) => setReviewText(e.target.value)}
-          />
-          <Box sx={{ mt: 2 }}>
+        </Snackbar>
+
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: 4,
+            border: '1px solid rgba(148, 163, 184, 0.28)',
+            background: 'rgba(255, 255, 255, 0.74)',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 24px 48px rgba(15, 23, 42, 0.10)',
+            p: { xs: 2, md: 3 },
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2 }}>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#13243f', letterSpacing: '-0.01em' }}>
+                Share Your Review
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#475569', mt: 0.4 }}>
+                Write your own feedback or tap a template below to prefill your message.
+              </Typography>
+            </Box>
+          </Stack>
+
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.5 },
+              borderRadius: 3,
+              border: '1px solid rgba(203, 213, 225, 0.9)',
+              backgroundColor: '#ffffff',
+              boxShadow: '0 10px 22px rgba(15, 23, 42, 0.06)',
+              mb: 2.5,
+            }}
+          >
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant="body2" sx={{ mb: 0.6, fontWeight: 600, color: '#334155' }}>
+                  Rating
+                </Typography>
+                <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
+              </Box>
+              <TextField
+                fullWidth
+                multiline
+                rows={6}
+                placeholder="Tell others what stood out about your visit..."
+                value={ownReviewText}
+                onChange={(e) => setOwnReviewText(e.target.value)}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    backgroundColor: '#fff',
+                  },
+                }}
+              />
+              <Typography variant="caption" sx={{ color: '#64748b' }}>
+                {ownReviewText.trim().length} characters
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  onClick={handleSubmitOwnReview}
+                  disabled={submitting || !rating || !ownReviewText.trim()}
+                >
+                  Review
+                </Button>
+              </Box>
+            </Stack>
+          </Paper>
+
+          <Button
+            variant={showTemplateAssist ? 'contained' : 'outlined'}
+            onClick={() => {
+              setShowTemplateAssist(true);
+            }}
+            sx={{ mb: showTemplateAssist ? 2.5 : 1 }}
+          >
+            I&apos;m busy
+          </Button>
+
+          {showTemplateAssist && (
+            <>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1} sx={{ mb: 1.5 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b' }}>
+                  Suggested Templates
+                </Typography>
+                <Chip
+                  size="small"
+                  label="Tap any template to edit"
+                  color="primary"
+                  variant="outlined"
+                />
+              </Stack>
+
+              {templates.length > 1 ? (
+                <Grid container spacing={1.5}>
+                  {templates.map((template) => (
+                    <Grid item xs={12} md={6} key={template.id}>
+                      <Card
+                        sx={{
+                          borderRadius: 2.5,
+                          border: '1px solid',
+                          borderColor: selectedTemplateId === template.id ? 'rgba(16, 185, 129, 0.65)' : 'rgba(203, 213, 225, 0.95)',
+                          cursor: 'pointer',
+                          opacity: 1,
+                          boxShadow: selectedTemplateId === template.id ? '0 12px 24px rgba(16, 185, 129, 0.16)' : '0 6px 14px rgba(15, 23, 42, 0.05)',
+                          transition: 'all 160ms ease',
+                          '&:hover': {
+                            borderColor: 'rgba(16, 185, 129, 0.8)',
+                            transform: 'translateY(-2px)',
+                            boxShadow: '0 14px 28px rgba(16, 185, 129, 0.16)',
+                          },
+                        }}
+                        onClick={() => handleSelectTemplate(template)}
+                      >
+                        <CardContent sx={{ p: 2 }}>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.55 }}>
+                            {template.text}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              ) : (
+                <Card sx={{ borderRadius: 2.5, opacity: 1, border: '1px solid rgba(203, 213, 225, 0.95)', boxShadow: '0 6px 14px rgba(15, 23, 42, 0.05)' }}>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.55 }}>
+                      {templates[0]?.text || 'No templates available'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!!templateReviewText.trim() && (
+                <Card sx={{ borderRadius: 2.5, border: '1px solid rgba(16, 185, 129, 0.4)', boxShadow: '0 8px 16px rgba(5, 150, 105, 0.12)', mt: 1.5 }}>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: '#065f46', fontWeight: 700, mb: 0.5 }}>
+                      Template Review Draft
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.55 }}>
+                      {templateReviewText}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+
+            </>
+          )}
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.2} sx={{ mt: 2.5 }}>
+            <Typography variant="body2" sx={{ color: '#64748b' }}>
+              Review is saved inside the app first, then you can post externally if you want.
+            </Typography>
             <Button
               variant="contained"
-              onClick={handleSubmitInAppReview}
-              disabled={submitting || !selectedTemplateId || !rating || !reviewText.trim()}
+              size="large"
+              onClick={handleSubmitTemplateReview}
+              disabled={submitting || !rating || !consentAccepted || !selectedTemplateId || !templateReviewText.trim()}
+              sx={{
+                px: 3,
+                minWidth: { xs: '100%', sm: 200 },
+                boxShadow: '0 12px 24px rgba(5, 150, 105, 0.3)',
+              }}
             >
-              {submitting ? 'Submitting...' : 'Submit Review'}
+              {submitting ? 'Submitting...' : 'Submit Template Review'}
             </Button>
-          </Box>
-        </Box>
+          </Stack>
+        </Paper>
 
         <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Would you also like to post this on Google / TripAdvisor?</DialogTitle>
+          <DialogTitle>Thank you for your valuable review</DialogTitle>
           <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Review text is ready. You can copy and paste it manually on the external platform.
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Your valuable feedback helps us a lot. We have copied your review to the clipboard. If you would like, please choose a platform below to share it.
             </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              value={lastSavedReview}
-              InputProps={{ readOnly: true }}
-              sx={{ mb: 2 }}
-            />
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<ContentCopyIcon />}
-              onClick={() => navigator.clipboard.writeText(lastSavedReview || '')}
-            >
-              Copy Review Text
-            </Button>
+            {revokeConsentUrl && (
+              <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+                You can revoke marketing permission later using your unique revoke link.
+              </Typography>
+            )}
           </DialogContent>
-          <DialogActions sx={{ p: 2 }}>
-            <Button startIcon={<OpenInNewIcon />} onClick={() => handlePostToChannel('Google')}>
+          <DialogActions sx={{ p: 2, pt: 0, flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <Button
+              size="medium"
+              variant="contained"
+              onClick={() => handlePostToChannel('Google')}
+              sx={{
+                py: 0.9,
+                width: 280,
+                borderRadius: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1,
+              }}
+            >
+              <OpenInNewIcon fontSize="small" />
               Post on Google
             </Button>
-            <Button startIcon={<OpenInNewIcon />} onClick={() => handlePostToChannel('TripAdvisor')}>
+            <Button
+              size="medium"
+              variant="contained"
+              onClick={() => handlePostToChannel('TripAdvisor')}
+              sx={{
+                py: 0.9,
+                width: 280,
+                borderRadius: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1,
+              }}
+            >
+              <OpenInNewIcon fontSize="small" />
               Post on TripAdvisor
             </Button>
-            <Button variant="contained" onClick={() => setShowChannelPopup(false)}>
+            <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
               Skip
             </Button>
           </DialogActions>
         </Dialog>
 
+        <Dialog open={showTemplateEditor} onClose={() => setShowTemplateEditor(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Edit Template</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Edit this template however you like, then apply it to your review.
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              rows={6}
+              value={templateEditorText}
+              onChange={(e) => setTemplateEditorText(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setShowTemplateEditor(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleUseEditedTemplate} disabled={!templateEditorText.trim()}>
+              Use This Review
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={showPermissionPopup} onClose={() => { setShowPermissionPopup(false); setPendingTemplate(null); }} maxWidth="sm" fullWidth>
+          <DialogTitle>Permission Required</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              {CONSENT_STATEMENT}
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={consentAccepted}
+                  onChange={(e) => setConsentAccepted(e.target.checked)}
+                />
+              }
+              label="I understand and give permission"
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => { setShowPermissionPopup(false); setPendingTemplate(null); }}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={pendingTemplate ? handleConfirmPermissionForTemplate : () => { setShowPermissionPopup(false); }}
+              disabled={!consentAccepted}
+            >
+              Continue
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         <Footer />
+      </Container>
+    </Box>
+  );
+}
+
+function RevokeConsentPage() {
+  const location = useLocation();
+  const [token, setToken] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    setToken(String(params.get('token') || '').trim());
+  }, [location.search]);
+
+  const handleRevoke = async () => {
+    if (!token) {
+      setError('Missing revoke token');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await api.post('/reviews/consent/revoke', { token });
+      setResult(res.data || { message: 'Consent revoked successfully' });
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not revoke consent with this link');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+      <Container maxWidth="sm">
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 700 }}>
+              Revoke Marketing Consent
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Use this page to withdraw permission for marketing/public use of your submitted review.
+            </Typography>
+            {result ? (
+              <Alert severity="success">{result.message || 'Consent revoked successfully'}</Alert>
+            ) : (
+              <>
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                <Button variant="contained" onClick={handleRevoke} disabled={submitting || !token}>
+                  {submitting ? 'Revoking...' : 'Revoke Consent'}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </Container>
     </Box>
   );
@@ -374,6 +691,7 @@ export default function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/signup-success" element={<SignupSuccess />} />
+        <Route path="/reviews/revoke-consent" element={<RevokeConsentPage />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />
