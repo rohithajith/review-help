@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, CircularProgress, Alert, Button, Paper, CheckCircle } from '@mui/material';
+import { Box, Typography, CircularProgress, Alert, Button, Paper } from '@mui/material';
 import api from '../api';
 
 export default function SignupSuccess() {

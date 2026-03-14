@@ -35,9 +35,6 @@ export default function Login({ onLoginSuccess }) {
         return;
       }
 
-      // Persist token locally for quick testing (not secure for production)
-      try { localStorage.setItem('supabase_access_token', accessToken); } catch (e) {}
-
       // Set Authorization header for API client (axios)
       try { if (api && api.defaults) api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`; } catch (e) {}
 

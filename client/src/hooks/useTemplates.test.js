@@ -1,4 +1,5 @@
 import React from 'react';
+import { vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import useTemplates from './useTemplates';
 
@@ -17,9 +18,9 @@ function TestComponent({ businessId }) {
 
 describe('useTemplates hook (component integration)', () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = vi.fn();
   });
-  afterEach(() => jest.resetAllMocks());
+  afterEach(() => vi.resetAllMocks());
 
   test('renders templates when businessId provided', async () => {
     const mockData = [{ id: 1, text: 'hello' }];

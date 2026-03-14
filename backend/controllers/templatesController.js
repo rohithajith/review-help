@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const { getAdminPool } = require('../tenantManager');
+const reviewAssistService = require('../services/reviewAssistService');
 
 const CONSENT_STATEMENT_VERSION = 'v1';
 const CONSENT_STATEMENT_TEXT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
@@ -100,6 +101,43 @@ exports.getMyReviews = async (req, res, next) => {
     res.json(rows);
   } catch (err) {
     next(err);
+  }
+};
+
+// Compose review via guided answers (public endpoint)
+exports.composeReview = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const answers = req.body && typeof req.body.answers === 'object' ? req.body.answers : {};
+  const skippedKeys = Array.isArray(req.body && req.body.skippedKeys) ? req.body.skippedKeys : [];
+  const nonEmptyCount = Object.values(answers).filter((v) => String(v || '').trim().length > 0).length;
+
+  if (nonEmptyCount < 1) {
+    return res.status(400).json({ message: 'Please answer at least 1 question to generate a review.' });
+  }
+
+  try {
+    const reviewText = await reviewAssistService.composeFromAnswers({ answers, skippedKeys });
+    return res.json({ reviewText });
+  } catch (err) {
+    return res.status(422).json({ message: err.message || 'Could not generate review at the moment.' });
+  }
+};
+
+// Polish user-provided review text via AI (public endpoint)
+exports.polishReview = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const reviewText = String((req.body && req.body.reviewText) || '').trim();
+  if (!reviewText) return res.status(400).json({ message: 'reviewText is required' });
+
+  try {
+    const polished = await reviewAssistService.polishReview({ reviewText });
+    return res.json({ reviewText: polished });
+  } catch (err) {
+    return res.status(422).json({ message: err.message || 'Could not polish review at the moment.' });
   }
 };
 

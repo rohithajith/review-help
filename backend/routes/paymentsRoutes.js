@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAdminPool } = require('../tenantManager');
+const authMiddleware = require('../middleware/authMiddleware');
 
 // Stripe instance (lazy-loaded)
 let stripe = null;
@@ -21,16 +22,38 @@ const PLAN_CONFIG = {
   'Pro Max': { currency: 'gbp', amount: 4900, interval: 'month' },
   'Enterprise': null, // custom / contact sales
 };
+const UPGRADABLE_PAID_PLANS = new Set(['Pro', 'Pro Max']);
+
+function normalizeBusinessId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function isBusinessOwner(pool, businessId, userId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM business_owners WHERE business_id = $1 AND user_id = $2 LIMIT 1',
+    [businessId, userId]
+  );
+  return rows.length > 0;
+}
 
 // =============================================================================
 // Create Stripe Checkout Session (subscription mode)
 // =============================================================================
-router.post('/create-checkout-session', async (req, res) => {
+router.post('/create-checkout-session', authMiddleware, async (req, res) => {
   try {
     const stripeClient = getStripe();
+    const pool = getAdminPool();
 
-    const { plan, email, businessId, success_url, cancel_url } = req.body || {};
+    const { plan, email, businessId } = req.body || {};
     if (!plan) return res.status(400).json({ error: 'Missing plan in request' });
+    const normalizedBusinessId = normalizeBusinessId(businessId);
+    if (!normalizedBusinessId) return res.status(400).json({ error: 'Missing or invalid businessId in request' });
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const owner = await isBusinessOwner(pool, normalizedBusinessId, userId);
+    if (!owner) return res.status(403).json({ error: 'Forbidden: user does not own this business' });
 
     const mapping = PLAN_CONFIG[plan] || null;
     if (!mapping) return res.status(400).json({ error: 'Plan does not require checkout or is invalid' });
@@ -56,11 +79,15 @@ router.post('/create-checkout-session', async (req, res) => {
       allow_promotion_codes: true,
       metadata: {
         plan,
-        businessId: businessId ? String(businessId) : '',
+        businessId: String(normalizedBusinessId),
+        userId: String(userId),
       },
-      success_url: success_url || `${frontendUrl}/#/signup-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: cancel_url || `${frontendUrl}/#/signup?canceled=true`,
+      success_url: `${frontendUrl}/#/signup-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl}/#/signup?canceled=true`,
     };
+
+    const requesterEmail = req.user && req.user.email ? String(req.user.email).trim() : '';
+    sessionParams.customer_email = requesterEmail || (email ? String(email).trim() : undefined);
 
     const session = await stripeClient.checkout.sessions.create(sessionParams);
 
@@ -74,7 +101,7 @@ router.post('/create-checkout-session', async (req, res) => {
 // =============================================================================
 // Stripe Webhook Handler
 // =============================================================================
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   const stripeClient = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -82,10 +109,21 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   try {
     if (webhookSecret) {
       const sig = req.headers['stripe-signature'];
+      if (!sig) return res.status(400).send('Webhook Error: Missing stripe-signature header');
       event = stripeClient.webhooks.constructEvent(req.body, sig, webhookSecret);
     } else {
-      // If no webhook secret, parse body directly (dev mode)
-      event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      if (process.env.NODE_ENV === 'production') {
+        console.error('Stripe webhook rejected: STRIPE_WEBHOOK_SECRET is required in production');
+        return res.status(500).send('Webhook Error: misconfigured webhook secret');
+      }
+      // Dev-only fallback when no webhook secret is configured
+      if (Buffer.isBuffer(req.body)) {
+        event = JSON.parse(req.body.toString('utf8'));
+      } else if (typeof req.body === 'string') {
+        event = JSON.parse(req.body);
+      } else {
+        event = req.body;
+      }
     }
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
@@ -94,6 +132,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   // Handle events
   try {
+    if (!event || typeof event.type !== 'string') {
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
@@ -133,23 +175,34 @@ async function handleCheckoutCompleted(session) {
   const pool = getAdminPool();
   const { metadata, customer, subscription } = session;
 
-  const plan = metadata?.plan;
+  const plan = String(metadata?.plan || '').trim();
   const businessId = metadata?.businessId;
+  const userId = metadata?.userId;
+  const normalizedBusinessId = normalizeBusinessId(businessId);
+  const upgradedPlan = UPGRADABLE_PAID_PLANS.has(plan) ? plan : 'Pro';
 
-  if (!businessId) {
+  if (!normalizedBusinessId) {
     console.warn('checkout.session.completed: no businessId in metadata');
     return;
   }
 
-  console.log(`Checkout completed for business ${businessId}, plan=${plan}, subscription=${subscription}`);
+  if (userId) {
+    const owner = await isBusinessOwner(pool, normalizedBusinessId, userId);
+    if (!owner) {
+      console.warn(`checkout.session.completed: ownership check failed for business ${normalizedBusinessId} and user ${userId}`);
+      return;
+    }
+  }
+
+  console.log(`Checkout completed for business ${normalizedBusinessId}, plan=${upgradedPlan}, subscription=${subscription}`);
 
   // Update business with plan and Stripe IDs
   await pool.query(
     `UPDATE businesses SET plan = $1, stripe_customer_id = $2, stripe_subscription_id = $3 WHERE id = $4`,
-    [plan || 'Pro', customer || null, subscription || null, businessId]
+    [upgradedPlan, customer || null, subscription || null, normalizedBusinessId]
   );
 
-  console.log(`Business ${businessId} upgraded to plan: ${plan}`);
+  console.log(`Business ${normalizedBusinessId} upgraded to plan: ${upgradedPlan}`);
 }
 
 /**
@@ -187,17 +240,27 @@ async function handleSubscriptionChange(subscription) {
 // =============================================================================
 // Verify a Checkout Session (called by frontend after redirect)
 // =============================================================================
-router.get('/verify-session/:sessionId', async (req, res) => {
+router.get('/verify-session/:sessionId', authMiddleware, async (req, res) => {
   try {
     const stripeClient = getStripe();
+    const pool = getAdminPool();
     const { sessionId } = req.params;
 
     const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+    const businessId = normalizeBusinessId(session?.metadata?.businessId);
+    const userId = req.userId;
+    if (!businessId || !userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const owner = await isBusinessOwner(pool, businessId, userId);
+    if (!owner) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     res.json({
       status: session.payment_status,
       plan: session.metadata?.plan || null,
-      businessId: session.metadata?.businessId || null,
+      businessId: String(businessId),
       customerEmail: session.customer_email,
     });
   } catch (err) {

@@ -51,9 +51,18 @@ exports.createBusiness = async (req, res, next) => {
 
 exports.listBusinesses = async (req, res, next) => {
   try {
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, plan, created_at FROM businesses ORDER BY id'
+      `SELECT b.id, b.name, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, b.plan, b.created_at
+       FROM businesses b
+       JOIN business_owners bo ON bo.business_id = b.id
+       WHERE bo.user_id = $1
+       ORDER BY b.id`,
+      [userId]
     );
     res.json(rows);
   } catch (err) {
@@ -158,7 +167,11 @@ exports.createDummyOwner = async (req, res, next) => {
     await pool.query('INSERT INTO users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email', [userId, email]);
     await pool.query('INSERT INTO business_owners (business_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (business_id, user_id) DO NOTHING', [businessId, userId, 'owner']);
 
-    res.status(201).json({ message: 'Dummy owner created', user: { id: userId, email }, password: password });
+    res.status(201).json({
+      message: 'Dummy owner created',
+      user: { id: userId, email },
+      passwordSet: Boolean(password),
+    });
   } catch (err) {
     next(err);
   }

@@ -1,47 +1,59 @@
-let axios;
-try {
-  // require inside try so Jest won't choke on ESM-only axios during test parsing
-  // in some environments. If axios can't be required, we'll fall back to a
-  // minimal fetch-based client for tests.
-  // eslint-disable-next-line global-require
-  axios = require('axios');
-} catch (e) {
-  axios = null;
-}
+import axios from 'axios';
+import supabase from './lib/supabaseClient';
+
+const metaEnv = (typeof import.meta !== 'undefined' && import.meta && import.meta.env)
+  ? import.meta.env
+  : {};
+const nodeEnv = (typeof process !== 'undefined' && process && process.env)
+  ? process.env
+  : {};
+const mode = String(metaEnv.MODE || nodeEnv.NODE_ENV || 'development').toLowerCase();
+const isTestEnv = mode === 'test';
+const isProdEnv = metaEnv.PROD === true || mode === 'production';
 
 // Force API prefix for all requests in the client. This ensures the
 // dev-server proxy (`/api`) is used when REACT_APP_API_URL is not set.
-const envApiUrl = typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.trim() : '';
+const envApiUrl = String(
+  metaEnv.REACT_APP_API_URL
+  || metaEnv.VITE_API_URL
+  || nodeEnv.REACT_APP_API_URL
+  || ''
+).trim();
 export const apiBase = envApiUrl || '/api';
 
 let api;
-// In test environments prefer the fetch-based fallback to avoid issues
-// with ESM-only axios builds in the test runner.
-if (process.env.NODE_ENV === 'test') {
-  axios = null;
-}
+const getSupabaseAccessToken = async () => {
+  try {
+    if (!supabase || !supabase.auth || typeof supabase.auth.getSession !== 'function') return null;
+    const { data } = await supabase.auth.getSession();
+    return data && data.session ? (data.session.access_token || null) : null;
+  } catch (e) {
+    return null;
+  }
+};
+// In test environments prefer the fetch-based fallback for easier mocking.
+const axiosClient = isTestEnv ? null : axios;
 
-if (axios && typeof axios.create === 'function') {
-  api = axios.create({ baseURL: apiBase });
+if (axiosClient && typeof axiosClient.create === 'function') {
+  api = axiosClient.create({ baseURL: apiBase });
 
-  // Add request interceptor to include auth token from localStorage
+  // Add request interceptor to include auth token from current Supabase session
   if (api.interceptors && api.interceptors.request) {
-    api.interceptors.request.use((config) => {
-      try {
-        const token = localStorage.getItem('supabase_access_token');
+    api.interceptors.request.use(async (config) => {
+      const existingAuth = config && config.headers && (config.headers['Authorization'] || config.headers['authorization']);
+      if (!existingAuth) {
+        const token = await getSupabaseAccessToken();
         if (token) {
           config.headers = config.headers || {};
           config.headers['Authorization'] = `Bearer ${token}`;
         }
-      } catch (e) {
-        // localStorage may not be available
       }
       return config;
     });
   }
 
   // Helpful logging for failed requests to aid debugging in development.
-  if (process.env.NODE_ENV !== 'production' && api.interceptors && api.interceptors.response) {
+  if (!isProdEnv && api.interceptors && api.interceptors.response) {
     api.interceptors.response.use(
       (res) => res,
       (err) => {
@@ -80,6 +92,36 @@ if (axios && typeof axios.create === 'function') {
   // Fallback minimal client using fetch so tests and environments without
   // axios can still exercise code paths that call api.get/post/etc.
   const makeUrl = (u) => (u && u.startsWith('http') ? u : `${apiBase}${u}`);
+  const withAuthHeaders = async (headers = {}) => {
+    const token = await getSupabaseAccessToken();
+    if (!token) return headers;
+    return { ...headers, Authorization: `Bearer ${token}` };
+  };
+  const parseFetchResponse = async (res, method, url) => {
+    const contentType = res && res.headers && typeof res.headers.get === 'function'
+      ? (res.headers.get('content-type') || '')
+      : '';
+    const hasJson = res && typeof res.json === 'function';
+    const hasText = res && typeof res.text === 'function';
+    const looksLikeJson = contentType.includes('application/json') || (!contentType && hasJson);
+
+    if (looksLikeJson && hasJson) {
+      try {
+        return { data: await res.json(), status: res.status };
+      } catch (e) {
+        if (hasText) {
+          const text = await res.text();
+          console.warn(`API.${method}: failed to parse JSON, returning raw text`, { url, status: res.status, contentType });
+          return { data: text, status: res.status };
+        }
+        return { data: null, status: res.status };
+      }
+    }
+
+    if (hasText) return { data: await res.text(), status: res.status };
+    if (hasJson) return { data: await res.json(), status: res.status };
+    return { data: null, status: res.status };
+  };
   api = {
     async _sendClientLog(payload) {
       try {
@@ -88,41 +130,21 @@ if (axios && typeof axios.create === 'function') {
         // ignore logging failures
       }
     },
-      async get(u) {
-        try {
-          const res = await fetch(makeUrl(u));
-          const contentType = res && res.headers && typeof res.headers.get === 'function' ? (res.headers.get('content-type') || '') : '';
-          const looksLikeJson = contentType.includes('application/json');
-          if (looksLikeJson) {
-            try {
-              return { data: await res.json(), status: res.status };
-            } catch (e) {
-              const text = await res.text();
-              console.warn('API.get: failed to parse JSON, returning raw text', { url: makeUrl(u), status: res.status, contentType });
-              return { data: text, status: res.status };
-            }
-          }
-          return { data: await res.text(), status: res.status };
-        } catch (err) {
-          try { await api._sendClientLog({ message: err && err.message, stack: err && err.stack, url: makeUrl(u), method: 'GET' }); } catch (e) {}
-          throw err;
-        }
-      },
+    async get(u) {
+      try {
+        const headers = await withAuthHeaders();
+        const res = await fetch(makeUrl(u), { headers });
+        return parseFetchResponse(res, 'get', makeUrl(u));
+      } catch (err) {
+        try { await api._sendClientLog({ message: err && err.message, stack: err && err.stack, url: makeUrl(u), method: 'GET' }); } catch (e) {}
+        throw err;
+      }
+    },
     async post(u, body) {
       try {
-        const res = await fetch(makeUrl(u), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const contentType = res && res.headers && typeof res.headers.get === 'function' ? (res.headers.get('content-type') || '') : '';
-        const looksLikeJson = contentType.includes('application/json');
-        if (looksLikeJson) {
-          try {
-            return { data: await res.json(), status: res.status };
-          } catch (e) {
-            const text = await res.text();
-            console.warn('API.post: failed to parse JSON, returning raw text', { url: makeUrl(u), status: res.status, contentType });
-            return { data: text, status: res.status };
-          }
-        }
-        return { data: await res.text(), status: res.status };
+        const headers = await withAuthHeaders({ 'Content-Type': 'application/json' });
+        const res = await fetch(makeUrl(u), { method: 'POST', headers, body: JSON.stringify(body) });
+        return parseFetchResponse(res, 'post', makeUrl(u));
       } catch (err) {
         try { await api._sendClientLog({ message: err && err.message, stack: err && err.stack, url: makeUrl(u), method: 'POST', body }); } catch (e) {}
         throw err;
@@ -130,19 +152,9 @@ if (axios && typeof axios.create === 'function') {
     },
     async put(u, body) {
       try {
-        const res = await fetch(makeUrl(u), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const contentType = res && res.headers && typeof res.headers.get === 'function' ? (res.headers.get('content-type') || '') : '';
-        const looksLikeJson = contentType.includes('application/json');
-        if (looksLikeJson) {
-          try {
-            return { data: await res.json(), status: res.status };
-          } catch (e) {
-            const text = await res.text();
-            console.warn('API.put: failed to parse JSON, returning raw text', { url: makeUrl(u), status: res.status, contentType });
-            return { data: text, status: res.status };
-          }
-        }
-        return { data: await res.text(), status: res.status };
+        const headers = await withAuthHeaders({ 'Content-Type': 'application/json' });
+        const res = await fetch(makeUrl(u), { method: 'PUT', headers, body: JSON.stringify(body) });
+        return parseFetchResponse(res, 'put', makeUrl(u));
       } catch (err) {
         try { await api._sendClientLog({ message: err && err.message, stack: err && err.stack, url: makeUrl(u), method: 'PUT', body }); } catch (e) {}
         throw err;
@@ -150,24 +162,14 @@ if (axios && typeof axios.create === 'function') {
     },
     async delete(u, opts = {}) {
       const init = { method: 'DELETE' };
+      init.headers = await withAuthHeaders();
       if (opts.data) {
-        init.headers = { 'Content-Type': 'application/json' };
+        init.headers = await withAuthHeaders({ 'Content-Type': 'application/json' });
         init.body = JSON.stringify(opts.data);
       }
       try {
         const res = await fetch(makeUrl(u), init);
-        const contentType = res && res.headers && typeof res.headers.get === 'function' ? (res.headers.get('content-type') || '') : '';
-        const looksLikeJson = contentType.includes('application/json');
-        if (looksLikeJson) {
-          try {
-            return { data: await res.json(), status: res.status };
-          } catch (e) {
-            const text = await res.text();
-            console.warn('API.delete: failed to parse JSON, returning raw text', { url: makeUrl(u), status: res.status, contentType });
-            return { data: text, status: res.status };
-          }
-        }
-        return { data: await res.text(), status: res.status };
+        return parseFetchResponse(res, 'delete', makeUrl(u));
       } catch (err) {
         try { await api._sendClientLog({ message: err && err.message, stack: err && err.stack, url: makeUrl(u), method: 'DELETE', body: opts.data }); } catch (e) {}
         throw err;

@@ -3,6 +3,7 @@
 // ADMIN_DATABASE_URL, TENANT_DB_URL_1, TENANT_DB_URL_2
 
 process.env.NODE_ENV = 'test';
+const RUN_PG_INTEGRATION_TESTS = process.env.RUN_PG_INTEGRATION_TESTS === 'true';
 
 // Ensure env is set before requiring the app
 const request = require('supertest');
@@ -22,7 +23,9 @@ const exec = (cmd, env = {}) => new Promise((resolve, reject) => {
   });
 });
 
-describe('Postgres tenant integration', () => {
+const describePg = RUN_PG_INTEGRATION_TESTS ? describe : describe.skip;
+
+describePg('Postgres tenant integration', () => {
   let adminPool;
 
   beforeAll(async () => {

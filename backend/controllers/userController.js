@@ -8,14 +8,13 @@ exports.onboard = async (req, res, next) => {
     const userId = req.userId;
     if (!user || !userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { 
+    const {
       business_name, 
       google_review_url, 
       logo_url, 
       welcome_message,
       business_type,    // 'business' or 'freelancer'
-      business_category, // e.g., 'Restaurant', 'Hairdresser'
-      plan              // e.g., 'Starter', 'Pro', 'Pro Max'
+      business_category // e.g., 'Restaurant', 'Hairdresser'
     } = req.body || {};
 
     // Upsert user into users table
@@ -42,13 +41,28 @@ exports.onboard = async (req, res, next) => {
     }
 
     // Otherwise create a new business for this user
-    const name = business_name || (user.email ? `${user.email.split('@')[0]}'s Business` : 'New Business');
-    const actualPlan = plan || 'Starter';
+    const rawName = business_name || (user.email ? `${user.email.split('@')[0]}'s Business` : 'New Business');
+    const name = String(rawName).trim();
+    if (!name || name.length > 120) {
+      return res.status(400).json({ error: 'business_name must be between 1 and 120 characters' });
+    }
+
+    // Never trust client-provided plan on onboarding.
+    // Upgrades are set only by verified payment webhooks.
+    const actualPlan = 'Starter';
     
     const insert = await pool.query(
       `INSERT INTO businesses (name, google_review_url, logo_url, welcome_message, business_type, business_category, plan) 
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, plan`,
-      [name, google_review_url || null, logo_url || null, welcome_message || null, business_type || null, business_category || null, actualPlan]
+      [
+        name,
+        google_review_url || null,
+        logo_url || null,
+        welcome_message || null,
+        business_type || null,
+        business_category || null,
+        actualPlan,
+      ]
     );
     const businessId = insert.rows[0].id;
 

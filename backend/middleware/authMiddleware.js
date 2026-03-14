@@ -19,6 +19,9 @@ module.exports = async (req, res, next) => {
     }
 
     const { data, error } = await supabase.auth.getUser(token);
+    if (error && /not configured/i.test(String(error.message || ''))) {
+      return res.status(500).json({ error: 'Supabase auth is not configured on server' });
+    }
     if (error || !data || !data.user) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }

@@ -1,12 +1,12 @@
 const { getAdminPool } = require('../tenantManager');
 
-// Allowed businessId: alphanumeric, hyphen, underscore, max 50 chars
-const BUSINESS_ID_RE = /^[A-Za-z0-9_-]{1,50}$/;
+// Business IDs are numeric (SERIAL in Postgres).
+const BUSINESS_ID_RE = /^[1-9]\d{0,9}$/;
 
 /**
  * Business Middleware for Supabase Shared DB
  * 
- * Validates businessId from URL params and attaches:
+ * Validates numeric businessId from URL params and attaches:
  *   - req.businessId: the validated business ID
  *   - req.db: the shared Supabase/Postgres pool
  * 
@@ -21,7 +21,7 @@ module.exports = async (req, res, next) => {
     
     businessId = String(businessId).trim();
     if (!BUSINESS_ID_RE.test(businessId)) {
-      return res.status(400).json({ error: 'Invalid businessId format' });
+      return res.status(400).json({ error: 'Invalid businessId format (must be a positive integer)' });
     }
 
     // Use the shared Supabase pool for all requests

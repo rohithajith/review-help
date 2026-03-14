@@ -12,24 +12,29 @@ A multi-tenant SaaS platform that helps businesses collect customer reviews thro
 ## Features
 
 - **AI-Powered Templates** — GPT-4o-mini generates personalized review templates on signup
+- **AI Compose + Polish** — Guided hotel/service Q&A can generate review drafts; Polish rewrites text for grammar and clarity
 - **Multi-Tenant** — Isolated data per business with role-based access
 - **Stripe Billing** — Subscription tiers (Starter/Pro/Pro Max/Enterprise)
 - **Template Rotation** — Used templates auto-archive; backups promote to active
-- **In-App Review First** — Customers submit rating + review text inside the app before any external channel step
+- **Flexible Review Entry** — Users can write their own review or use/edit templates
+- **Clipboard-First Sharing** — Own-review flow copies text to clipboard and prompts channel selection
+- **Consent + Revocation** — Template-based submission stores marketing/public-use consent with revocation support
 - **My Reviews** — Every submitted review is stored centrally per business and visible in Business Admin
 
 ## Customer Flow (Current)
 
 1. Customer scans QR and lands on `/#/business/:businessId`
-2. Customer selects a review template (if multiple)
-3. Customer submits rating + review text inside the app
-4. Review is saved immediately to that business (`My Reviews`)
-5. Success message is shown: `Review taken`
-6. Post-submit popup offers:
+2. Customer writes their own review in the white review box, or taps `Compose` for AI-assisted drafting
+3. `Compose` opens a guided Q&A (5 core hotel/service questions + up to 2 adaptive backup questions)
+4. AI-generated output is inserted into the own-review box; `Polish` can further rewrite for grammar/clarity
+5. If user clicks `I'm busy`, templates are shown; template selection opens an editor modal
+6. Template-based submission requires explicit marketing/public-use consent (stored for audit)
+7. Own-review path copies text to clipboard directly and opens sharing prompt
+8. Post-action popup offers:
    - Post on Google
    - Post on TripAdvisor
    - Skip
-7. If a channel is selected, the platform link opens and the same review text is available to copy/paste manually
+9. If a channel is selected, the platform link opens in a new tab with review text ready to paste
 
 ## Tech Stack
 
@@ -65,8 +70,12 @@ REACT_APP_SUPABASE_ANON_KEY=eyJ...
 |----------|-------------|
 | `POST /api/users/onboard` | Create business + generate AI templates |
 | `GET /api/:businessId/templates` | Get active templates |
-| `POST /api/:businessId/reviews` | Submit in-app review (rating + review text) |
+| `POST /api/:businessId/reviews/compose` | Generate review text from guided answers (AI) |
+| `POST /api/:businessId/reviews/polish` | Rewrite review text for grammar/clarity (AI) |
+| `POST /api/:businessId/reviews` | Submit in-app review (rating + review text; consent required for template-based submissions) |
 | `GET /api/:businessId/reviews` | Get all saved reviews for My Reviews |
+| `POST /api/reviews/consent/revoke` | Public token-based consent revocation |
+| `POST /api/:businessId/reviews/:id/consent/revoke` | Owner/admin revoke consent for a saved review |
 | `POST /api/:businessId/templates/:id/use` | Archive/rotate template (legacy template-use path) |
 | `POST /api/payments/create-checkout-session` | Stripe checkout |
 

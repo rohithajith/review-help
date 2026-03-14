@@ -1,15 +1,34 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const { body, param } = require('express-validator');
 const router = express.Router({ mergeParams: true });
 const templatesController = require('../controllers/templatesController');
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
-const { requirePlan, attachPlanInfo } = require('../middleware/planMiddleware');
+const { requirePlan } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 
 // helper to forward async errors to centralized handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const requireAdminApiKey = (req, res, next) => {
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected) {
+    return res.status(403).json({ error: 'ADMIN_API_KEY is not configured' });
+  }
+  const provided = req.headers['x-admin-key'];
+  if (!provided || provided !== expected) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+const aiAssistLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 30 : 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests. Please try again shortly.' },
+});
 
 // Get all active templates
 router.get('/templates', asyncHandler(templatesController.getActiveTemplates));
@@ -25,12 +44,13 @@ router.post(
   asyncHandler(templatesController.submitReview)
 );
 
-// Get all in-app reviews for My Reviews
-router.get('/reviews', asyncHandler(templatesController.getMyReviews));
+// Get all in-app reviews for My Reviews (owner-only)
+router.get('/reviews', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getMyReviews));
 
 // Compose review from guided Q&A answers (public)
 router.post(
   '/reviews/compose',
+  aiAssistLimiter,
   [
     body('answers').isObject(),
     body('skippedKeys').optional().isArray(),
@@ -41,6 +61,7 @@ router.post(
 // Polish review text with AI (public)
 router.post(
   '/reviews/polish',
+  aiAssistLimiter,
   [
     body('reviewText').isString().trim().isLength({ min: 1, max: 2000 }),
   ],
@@ -75,7 +96,7 @@ router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], asyncHandler(t
 
 // Create a dummy owner for development/testing (creates Supabase user + maps to business)
 // Guarded: only allowed when ALLOW_DUMMY_OWNER=true or NODE_ENV != 'production'
-router.post('/owners/dummy', asyncHandler(businessController.createDummyOwner));
+router.post('/owners/dummy', requireAdminApiKey, asyncHandler(businessController.createDummyOwner));
 
 // Get all used templates (admin feature)
 router.get('/templates/used', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getUsedTemplates));
@@ -107,7 +128,7 @@ router.delete('/templates/backups/:id', authMiddleware, ownerMiddleware, [param(
 // =============================================================================
 
 // Get generation status for this business
-router.get('/templates/generation/status', asyncHandler(async (req, res) => {
+router.get('/templates/generation/status', authMiddleware, ownerMiddleware, asyncHandler(async (req, res) => {
   const result = await templateGenerationJob.getGenerationStatus();
   if (!result.success) {
     return res.status(500).json({ error: result.error });
@@ -118,7 +139,7 @@ router.get('/templates/generation/status', asyncHandler(async (req, res) => {
 }));
 
 // Manually trigger generation for this business (requires Pro+ plan)
-router.post('/templates/generation/trigger', requirePlan(['Pro', 'Pro Max', 'Enterprise']), asyncHandler(async (req, res) => {
+router.post('/templates/generation/trigger', authMiddleware, ownerMiddleware, requirePlan(['Pro', 'Pro Max', 'Enterprise']), asyncHandler(async (req, res) => {
   const businessId = parseInt(req.businessId, 10);
   
   // Run in background, don't block the response

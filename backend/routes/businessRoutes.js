@@ -28,8 +28,8 @@ const requireAdminApiKey = (req, res, next) => {
 // Create a new business (authenticated users become owner)
 router.post('/', authMiddleware, asyncHandler(businessController.createBusiness));
 
-// List all businesses
-router.get('/', asyncHandler(businessController.listBusinesses));
+// List businesses for the authenticated owner
+router.get('/', authMiddleware, asyncHandler(businessController.listBusinesses));
 
 // =============================================================================
 // AI Template Generation Routes (Super Admin)

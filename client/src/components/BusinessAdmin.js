@@ -76,7 +76,6 @@ const BusinessAdmin = ({ businessId }) => {
           return;
         }
 
-        try { localStorage.setItem('supabase_access_token', accessToken); } catch (e) {}
         if (api && api.defaults) {
           api.defaults.headers.common = api.defaults.headers.common || {};
           api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
@@ -112,7 +111,6 @@ const BusinessAdmin = ({ businessId }) => {
   // Handle logout
   const handleLogout = async () => {
     try { await supabase.auth.signOut(); } catch (e) {}
-    try { localStorage.removeItem('supabase_access_token'); } catch (e) {}
     try {
       if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
         delete api.defaults.headers.common['Authorization'];

@@ -135,8 +135,6 @@ export default function Signup() {
         return;
       }
 
-      try { localStorage.setItem('supabase_access_token', accessToken); } catch (e) {}
-      
       if (api && api.defaults && api.defaults.headers) {
         api.defaults.headers.common = api.defaults.headers.common || {};
         api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
@@ -150,7 +148,6 @@ export default function Signup() {
           business_name: businessName || undefined,
           business_type: businessType,
           business_category: finalCategory,
-          plan: selectedPlan
         };
         
         const res = await (api.defaults 

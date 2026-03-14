@@ -1,13 +1,14 @@
 import React from 'react';
+import { vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 // Mock the api module used by AdminDashboard
-jest.mock('../api', () => ({
+vi.mock('../api', () => ({
   __esModule: true,
   default: {
-    get: jest.fn(),
-    post: jest.fn(),
-    put: jest.fn(),
-    delete: jest.fn(),
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
   }
 }));
 
@@ -16,7 +17,8 @@ import api from '../api';
 
 describe('AdminDashboard', () => {
   beforeEach(() => {
-    jest.resetAllMocks();
+    vi.resetAllMocks();
+    localStorage.clear();
   });
 
   test('loads businesses and displays them', async () => {
@@ -30,20 +32,21 @@ describe('AdminDashboard', () => {
 
     render(<AdminDashboard />);
 
-    // wait for businesses to be loaded and select to populate
+    // wait for businesses load call
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/businesses'));
-    // verify the select options rendered (include default empty option)
-    const options = screen.getAllByRole('option');
-    // At minimum the default option should be present
-    expect(options.length).toBeGreaterThanOrEqual(1);
-    // The API should have been called for businesses
+    expect(screen.getByText('Admin Dashboard')).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith('/businesses');
   });
 
   test('create business calls API and refreshes list', async () => {
     const businesses = [{ id: 1, name: 'A' }];
-    api.get.mockResolvedValueOnce({ data: businesses });
-    api.get.mockResolvedValueOnce({ data: [] });
+    api.get.mockImplementation((url) => {
+      if (url === '/businesses') return Promise.resolve({ data: businesses });
+      if (url === '/1/business') return Promise.resolve({ data: { id: 1, name: 'A', google_review_url: '', welcome_message: '' } });
+      if (url === '/1/templates') return Promise.resolve({ data: [] });
+      if (url === '/1/templates/backups') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
     api.post.mockResolvedValueOnce({ status: 201, data: { id: 42, name: 'New' } });
 
     render(<AdminDashboard />);

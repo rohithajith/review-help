@@ -16,12 +16,38 @@ const paymentsRoutes = require('./routes/paymentsRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5002;
+let infraInitPromise = null;
+
+async function initializeInfrastructure() {
+  if (infraInitPromise) return infraInitPromise;
+
+  infraInitPromise = (async () => {
+    try {
+      const pool = getAdminPool();
+      await pool.query('SELECT 1');
+      console.log('✓ Connected to Supabase/Postgres');
+
+      // Ensure all required tables exist
+      await ensureAdminSchema();
+      console.log('✓ Database schema ready');
+
+      // Initialize cron jobs for background processing
+      cronScheduler.initializeCronJobs();
+    } catch (e) {
+      console.error('✗ Database connection failed:', e.message);
+      console.error('  Make sure ADMIN_DATABASE_URL is set correctly');
+    }
+  })();
+
+  return infraInitPromise;
+}
 
 // Middleware
 app.use(cors());
+app.disable('x-powered-by');
 
 // Stripe webhook needs raw body for signature verification - must be before express.json()
-// The paymentsRoutes handles this internally with express.raw() for the /webhook endpoint
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 
@@ -49,24 +75,10 @@ if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
   app.use('/api', apiLimiter);
 }
 
-// Initialize Supabase/Postgres connection and ensure schema exists
-(async () => {
-  try {
-    const pool = getAdminPool();
-    await pool.query('SELECT 1');
-    console.log('✓ Connected to Supabase/Postgres');
-    
-    // Ensure all required tables exist
-    await ensureAdminSchema();
-    console.log('✓ Database schema ready');
-
-    // Initialize cron jobs for background processing
-    cronScheduler.initializeCronJobs();
-  } catch (e) {
-    console.error('✗ Database connection failed:', e.message);
-    console.error('  Make sure ADMIN_DATABASE_URL is set correctly');
-  }
-})();
+// Initialize DB/cron in non-test environments.
+if (process.env.NODE_ENV !== 'test') {
+  initializeInfrastructure();
+}
 
 // Public business routes (create/list businesses)
 app.use('/api/businesses', businessRoutes);
@@ -100,9 +112,12 @@ app.use((err, req, res, next) => {
 
 // Start the server only if not required by tests
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  initializeInfrastructure().finally(() => {
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
   });
 }
 
 module.exports = app;
+module.exports.initializeInfrastructure = initializeInfrastructure;

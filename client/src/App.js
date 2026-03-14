@@ -857,15 +857,6 @@ function BusinessAdminPage() {
 // Main App Router
 // =============================================================================
 export default function App() {
-  // On app start, apply any saved access token to the API client
-  React.useEffect(() => {
-    try {
-      const token = localStorage.getItem('supabase_access_token');
-      if (token && api && api.defaults) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } catch (e) {
-      // ignore
-    }
-  }, []);
   return (
     <Router>
       <NavBar />

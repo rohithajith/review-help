@@ -267,28 +267,8 @@ async function seedBusinessTemplates(businessId) {
   console.info(`tenantManager: seeded templates for business_id=${businessId}`);
 }
 
-// Legacy functions for backward compatibility (deprecated)
-// These are no longer used but kept to avoid breaking imports
-
-async function getTenantPool(businessId) {
-  // In shared DB mode, always return the admin pool
-  return getAdminPool();
-}
-
-async function createTenantDatabase(connectionString, aliasKey) {
-  // No longer creates separate databases; just ensure schema and seed
-  await ensureAdminSchema();
-  if (aliasKey) {
-    await seedBusinessTemplates(aliasKey);
-  }
-  return getAdminPool();
-}
-
 module.exports = {
   getAdminPool,
   ensureAdminSchema,
   seedBusinessTemplates,
-  // Legacy exports (deprecated)
-  getTenantPool,
-  createTenantDatabase,
 };

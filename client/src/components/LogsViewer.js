@@ -8,6 +8,7 @@ import {
   Alert,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import api from '../api';
 
 export default function LogsViewer({ lines = 200 }) {
   const [logs, setLogs] = useState([]);
@@ -18,9 +19,8 @@ export default function LogsViewer({ lines = 200 }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/_client-log?lines=${lines}`);
-      if (!res.ok) throw new Error('Failed to fetch logs');
-      const data = await res.json();
+      const res = await api.get(`/_client-log?lines=${lines}`);
+      const data = res && res.data ? res.data : [];
       setLogs(data);
     } catch (e) {
       setError(e.message || 'unknown');
