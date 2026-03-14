@@ -7,6 +7,7 @@ import Pricing from './components/Pricing';
 import Contact from './components/Contact';
 import Signup from './components/Signup';
 import SignupSuccess from './components/SignupSuccess';
+import ResetPassword from './components/ResetPassword';
 import NavBar from './components/Navbar';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
@@ -36,6 +37,8 @@ import {
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
 import './App.css';
@@ -46,6 +49,13 @@ const businessLogos = {
 };
 
 const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
+const COMPOSE_QUESTIONS = [
+  { key: 'stay_purpose', label: 'What was the purpose of your stay?', placeholder: 'Business trip, family vacation, weekend break, etc.' },
+  { key: 'room_cleanliness', label: 'How was the room cleanliness and comfort?', placeholder: 'Mention what stood out, if anything.' },
+  { key: 'staff_service', label: 'How was the staff service during your stay?', placeholder: 'Reception, housekeeping, concierge, etc.' },
+  { key: 'checkin_checkout', label: 'How was check-in/check-out experience?', placeholder: 'Smooth, delayed, friendly, efficient, etc.' },
+  { key: 'overall_value', label: 'How would you describe overall value for money?', placeholder: 'Reasonable, great value, a bit pricey, etc.' },
+];
 
 // =============================================================================
 // Business Template Page - Each business owner gets their unique URL
@@ -77,6 +87,12 @@ function BusinessTemplatePage() {
   const [showTemplateAssist, setShowTemplateAssist] = useState(false);
   const [showPermissionPopup, setShowPermissionPopup] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState(null);
+  const [showComposeModal, setShowComposeModal] = useState(false);
+  const [composeAnswers, setComposeAnswers] = useState({});
+  const [composeSkipped, setComposeSkipped] = useState({});
+  const [composeStep, setComposeStep] = useState(0);
+  const [composeLoading, setComposeLoading] = useState(false);
+  const [polishLoading, setPolishLoading] = useState(false);
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -185,6 +201,98 @@ function BusinessTemplatePage() {
     setLastSavedReview(ownReviewText.trim());
     setRevokeConsentUrl('');
     setShowChannelPopup(true);
+  };
+
+  const handleCompose = () => {
+    setComposeStep(0);
+    setComposeAnswers({});
+    setComposeSkipped({});
+    setShowComposeModal(true);
+  };
+
+  const handlePolishOwnReview = async () => {
+    if (!ownReviewText.trim()) return;
+    setPolishLoading(true);
+    try {
+      const res = await api.post(`/${businessId}/reviews/polish`, {
+        reviewText: ownReviewText.trim(),
+      });
+      const polished = String(res?.data?.reviewText || '').trim();
+      if (polished) {
+        setOwnReviewText(polished);
+        setSuccessMessage('Review polished successfully.');
+      } else {
+        setSuccessMessage('Could not polish review right now.');
+      }
+    } catch (err) {
+      setSuccessMessage('Could not polish review right now.');
+    } finally {
+      setPolishLoading(false);
+    }
+  };
+
+  const answeredComposeCount = COMPOSE_QUESTIONS.filter((q) => String(composeAnswers[q.key] || '').trim().length > 0).length;
+  const currentComposeQuestion = COMPOSE_QUESTIONS[composeStep];
+  const composeQuestionsLeft = Math.max(COMPOSE_QUESTIONS.length - composeStep - 1, 0);
+
+  const handleComposeAnswerChange = (key, value) => {
+    setComposeAnswers((prev) => ({ ...prev, [key]: value }));
+    if (value && value.trim().length > 0) {
+      setComposeSkipped((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleToggleSkipComposeQuestion = (key) => {
+    setComposeSkipped((prev) => {
+      const next = !prev[key];
+      return { ...prev, [key]: next };
+    });
+    setComposeAnswers((prev) => ({ ...prev, [key]: '' }));
+  };
+
+  const resetComposeModal = () => {
+    setShowComposeModal(false);
+    setComposeAnswers({});
+    setComposeSkipped({});
+    setComposeStep(0);
+    setComposeLoading(false);
+  };
+
+  const handleComposeNext = () => {
+    setComposeStep((prev) => Math.min(prev + 1, COMPOSE_QUESTIONS.length - 1));
+  };
+
+  const handleComposeBack = () => {
+    setComposeStep((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleGenerateComposeReview = async () => {
+    if (answeredComposeCount < 3) return;
+    setComposeLoading(true);
+    try {
+      const answersPayload = {};
+      for (const q of COMPOSE_QUESTIONS) {
+        const v = String(composeAnswers[q.key] || '').trim();
+        if (v) answersPayload[q.key] = v;
+      }
+      const skippedKeys = COMPOSE_QUESTIONS.filter((q) => composeSkipped[q.key]).map((q) => q.key);
+      const res = await api.post(`/${businessId}/reviews/compose`, {
+        answers: answersPayload,
+        skippedKeys,
+      });
+      const generated = String(res?.data?.reviewText || '').trim();
+      if (generated) {
+        setOwnReviewText(generated);
+        setSuccessMessage('AI draft added to your review box.');
+        resetComposeModal();
+      } else {
+        setSuccessMessage('Could not generate a review right now.');
+      }
+    } catch (err) {
+      setSuccessMessage(err?.response?.data?.message || 'Could not generate a review right now.');
+    } finally {
+      setComposeLoading(false);
+    }
   };
 
   const handleSubmitTemplateReview = () => {
@@ -381,7 +489,26 @@ function BusinessTemplatePage() {
               <Typography variant="caption" sx={{ color: '#64748b' }}>
                 {ownReviewText.trim().length} characters
               </Typography>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={handleCompose}
+                  >
+                    Compose
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AutoFixHighIcon />}
+                    onClick={handlePolishOwnReview}
+                    disabled={!ownReviewText.trim() || polishLoading}
+                  >
+                    {polishLoading ? 'Polishing...' : 'Polish'}
+                  </Button>
+                </Box>
                 <Button
                   variant="contained"
                   onClick={handleSubmitOwnReview}
@@ -512,16 +639,15 @@ function BusinessTemplatePage() {
               onClick={() => handlePostToChannel('Google')}
               sx={{
                 py: 0.9,
-                width: 280,
+                width: 240,
                 borderRadius: 1.5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1,
+                px: 2,
               }}
             >
-              <OpenInNewIcon fontSize="small" />
-              Post on Google
+              <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                <OpenInNewIcon fontSize="small" />
+                <Box component="span" sx={{ textAlign: 'left' }}>Google</Box>
+              </Box>
             </Button>
             <Button
               size="medium"
@@ -529,16 +655,15 @@ function BusinessTemplatePage() {
               onClick={() => handlePostToChannel('TripAdvisor')}
               sx={{
                 py: 0.9,
-                width: 280,
+                width: 240,
                 borderRadius: 1.5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1,
+                px: 2,
               }}
             >
-              <OpenInNewIcon fontSize="small" />
-              Post on TripAdvisor
+              <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                <OpenInNewIcon fontSize="small" />
+                <Box component="span" sx={{ textAlign: 'left' }}>TripAdvisor</Box>
+              </Box>
             </Button>
             <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
               Skip
@@ -593,6 +718,66 @@ function BusinessTemplatePage() {
               disabled={!consentAccepted}
             >
               Continue
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={showComposeModal} onClose={resetComposeModal} maxWidth="md" fullWidth>
+          <DialogTitle>Compose Review With AI</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Answer one question at a time. You can skip any question and continue with the rest.
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+              <Chip size="small" label={`Question ${composeStep + 1} of ${COMPOSE_QUESTIONS.length}`} />
+              <Typography variant="caption" sx={{ color: '#64748b' }}>
+                {composeQuestionsLeft} left
+              </Typography>
+            </Box>
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+              <CardContent sx={{ p: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  {currentComposeQuestion.label}
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  multiline
+                  minRows={2}
+                  placeholder={currentComposeQuestion.placeholder}
+                  value={composeAnswers[currentComposeQuestion.key] || ''}
+                  onChange={(e) => handleComposeAnswerChange(currentComposeQuestion.key, e.target.value)}
+                  disabled={!!composeSkipped[currentComposeQuestion.key]}
+                />
+                <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => handleToggleSkipComposeQuestion(currentComposeQuestion.key)}
+                  >
+                    {composeSkipped[currentComposeQuestion.key] ? 'Unskip' : 'Skip'}
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: '#64748b' }}>
+              Answered: {answeredComposeCount} / 1 minimum
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={handleComposeBack} disabled={composeStep === 0}>
+              Back
+            </Button>
+            <Button onClick={handleComposeNext} disabled={composeStep >= COMPOSE_QUESTIONS.length - 1}>
+              Next
+            </Button>
+            <Button onClick={resetComposeModal}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleGenerateComposeReview}
+              disabled={composeLoading || answeredComposeCount < 1}
+            >
+              {composeLoading ? 'Generating...' : 'Generate Review'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -691,6 +876,7 @@ export default function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/signup-success" element={<SignupSuccess />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/reviews/revoke-consent" element={<RevokeConsentPage />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}

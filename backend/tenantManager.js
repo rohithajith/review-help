@@ -200,20 +200,7 @@ async function ensureAdminSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_business_id ON business_owners(business_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_user_id ON business_owners(user_id)`);
 
-  // Business admin credentials (simple username/password per business)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS business_admin_credentials (
-      id SERIAL PRIMARY KEY,
-      business_id INTEGER NOT NULL UNIQUE,
-      username TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_admin_credentials_business_id ON business_admin_credentials(business_id)`);
-  
-  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews+consent, business_admin_credentials)');
+  console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews+consent)');
 }
 
 /**

@@ -29,8 +29,6 @@ import {
   IconButton,
   Snackbar,
   Divider,
-  Chip,
-  InputAdornment,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -39,10 +37,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
-import LockIcon from '@mui/icons-material/Lock';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import api from '../api';
 import LogsViewer from './LogsViewer';
 
@@ -71,14 +66,6 @@ const AdminDashboard = () => {
   const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
-
-  // Admin credentials state
-  const [hasAdminCredentials, setHasAdminCredentials] = useState(false);
-  const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
-
 
   const fetchTemplates = useCallback(async (bizId = selectedBusinessId) => {
     try {
@@ -153,15 +140,6 @@ const AdminDashboard = () => {
         setWelcomeMessage(biz.welcome_message || '');
         setReviewPlatforms(biz.review_platforms || DEFAULT_REVIEW_PLATFORMS);
         fetchTemplates(bizId);
-
-        // Check if admin credentials exist for this business
-        try {
-          const credRes = await api.get(`/businesses/${bizId}/admin/has-credentials`);
-          setHasAdminCredentials(credRes.data.hasCredentials);
-        } catch (err) {
-          console.error('Error checking admin credentials:', err);
-          setHasAdminCredentials(false);
-        }
       } catch (err) {
         console.error('Error loading business details', err);
       }
@@ -171,37 +149,6 @@ const AdminDashboard = () => {
       loadTenantData(selectedBusinessId);
     }
   }, [selectedBusinessId, fetchTemplates]);
-
-  // Save admin credentials handler
-  const handleSaveAdminCredentials = async () => {
-    if (!adminUsername.trim() || !adminPassword) {
-      setAlertMessage('Username and password are required');
-      setAlertVariant('danger');
-      return;
-    }
-
-    if (adminPassword.length < 4) {
-      setAlertMessage('Password must be at least 4 characters');
-      setAlertVariant('danger');
-      return;
-    }
-
-    try {
-      await api.post(`/businesses/${selectedBusinessId}/admin/credentials`, {
-        username: adminUsername.trim(),
-        password: adminPassword,
-      });
-
-      setHasAdminCredentials(true);
-      setShowCredentialsModal(false);
-      setAlertMessage('Admin credentials saved successfully');
-      setAlertVariant('success');
-    } catch (err) {
-      console.error('Error saving admin credentials:', err);
-      setAlertMessage(err.response?.data?.error || 'Error saving credentials');
-      setAlertVariant('danger');
-    }
-  };
 
   // Copy admin URL to clipboard
   const handleCopyAdminUrl = () => {
@@ -460,16 +407,11 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Admin Credentials Card */}
+          {/* Business Admin Access Card */}
           {selectedBusinessId && (
             <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
               <CardHeader
-                title={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LockIcon fontSize="small" />
-                    Business Admin Access
-                  </Box>
-                }
+                title="Business Admin Access"
                 sx={{
                   background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
                   '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
@@ -477,34 +419,10 @@ const AdminDashboard = () => {
               />
               <CardContent>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Set up login credentials for the business owner to access their admin panel.
+                  Owners sign in via Supabase and can access this business admin page directly.
                 </Typography>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Typography variant="body2">
-                    Status:
-                  </Typography>
-                  {hasAdminCredentials ? (
-                    <Chip label="Credentials Set" color="success" size="small" />
-                  ) : (
-                    <Chip label="Not Configured" color="warning" size="small" />
-                  )}
-                </Box>
-
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<LockIcon />}
-                    onClick={() => {
-                      setAdminUsername('');
-                      setAdminPassword('');
-                      setShowPassword(false);
-                      setShowCredentialsModal(true);
-                    }}
-                  >
-                    {hasAdminCredentials ? 'Reset Credentials' : 'Set Credentials'}
-                  </Button>
-                  
                   <Button
                     variant="outlined"
                     startIcon={<ContentCopyIcon />}
@@ -934,81 +852,6 @@ const AdminDashboard = () => {
           </Button>
           <Button variant="contained" color="error" onClick={handleBulkDelete}>
             Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Admin Credentials Modal */}
-      <Dialog open={showCredentialsModal} onClose={() => setShowCredentialsModal(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ m: 0, p: 2, pr: 6 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LockIcon color="primary" />
-            {hasAdminCredentials ? 'Reset Admin Credentials' : 'Set Admin Credentials'}
-          </Box>
-          <IconButton
-            aria-label="close"
-            onClick={() => setShowCredentialsModal(false)}
-            sx={{ position: 'absolute', right: 8, top: 8, color: (theme) => theme.palette.grey[500] }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            {hasAdminCredentials 
-              ? 'Enter new credentials to replace the existing ones. Share these with the business owner.'
-              : 'Create login credentials for the business owner to access their admin panel.'
-            }
-          </Typography>
-
-          <TextField
-            fullWidth
-            label="Username"
-            value={adminUsername}
-            onChange={e => setAdminUsername(e.target.value)}
-            sx={{ mb: 2 }}
-            placeholder="e.g., admin or owner name"
-            autoFocus
-          />
-
-          <TextField
-            fullWidth
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={adminPassword}
-            onChange={e => setAdminPassword(e.target.value)}
-            placeholder="Minimum 4 characters"
-            helperText="Share this password with the business owner"
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-
-          {hasAdminCredentials && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              This will replace the existing credentials. The business owner will need to use the new username and password.
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button variant="outlined" onClick={() => setShowCredentialsModal(false)}>
-            Cancel
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={handleSaveAdminCredentials}
-            disabled={!adminUsername.trim() || adminPassword.length < 4}
-          >
-            {hasAdminCredentials ? 'Update Credentials' : 'Save Credentials'}
           </Button>
         </DialogActions>
       </Dialog>

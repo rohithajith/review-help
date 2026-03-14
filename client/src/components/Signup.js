@@ -67,7 +67,7 @@ export default function Signup() {
   const steps = ['Account', 'Business Type', 'Details'];
 
   const isOtherCategory = businessCategory === 'Other Business' || businessCategory === 'Other Freelancer';
-  const canProceedStep0 = email && password && password.length >= 6;
+  const canProceedStep0 = email && password && password.length >= 8;
   const canProceedStep1 = businessType && businessCategory && (!isOtherCategory || customDescription.trim().length >= 10);
   const canSubmit = canProceedStep0 && canProceedStep1 && businessName;
 
@@ -220,7 +220,7 @@ export default function Signup() {
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
               required
-              helperText="At least 6 characters"
+              helperText="At least 8 characters"
             />
           </Box>
         );

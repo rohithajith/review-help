@@ -34,7 +34,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CloseIcon from '@mui/icons-material/Close';
 import LogoutIcon from '@mui/icons-material/Logout';
 import api from '../api';
-import BusinessLoginModal from './BusinessLoginModal';
+import supabase from '../lib/supabaseClient';
 
 // =============================================================================
 // BusinessAdmin - A simplified admin panel for business owners
@@ -44,12 +44,9 @@ import BusinessLoginModal from './BusinessLoginModal';
 const BusinessAdmin = ({ businessId }) => {
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [showSetupModal, setShowSetupModal] = useState(false);
-  const [setupUsername, setSetupUsername] = useState('');
-  const [setupPassword, setSetupPassword] = useState('');
-  const [setupError, setSetupError] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const [requiresLogin, setRequiresLogin] = useState(false);
 
   // Business and template state
   const [business, setBusiness] = useState(null);
@@ -69,94 +66,60 @@ const BusinessAdmin = ({ businessId }) => {
   useEffect(() => {
     const checkAuth = async () => {
       setCheckingAuth(true);
-      
-      // Check for existing session token
-      const token = sessionStorage.getItem(`business_admin_token_${businessId}`);
-      if (token) {
-        // Token exists, consider authenticated (simple validation)
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session || null;
+        const accessToken = session?.access_token || null;
+        if (!accessToken) {
+          setRequiresLogin(true);
+          setIsAuthenticated(false);
+          return;
+        }
+
+        try { localStorage.setItem('supabase_access_token', accessToken); } catch (e) {}
+        if (api && api.defaults) {
+          api.defaults.headers.common = api.defaults.headers.common || {};
+          api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+        }
+
+        await api.get(`/${businessId}/admin/access`);
         setIsAuthenticated(true);
-        setCheckingAuth(false);
-        return;
+        setRequiresLogin(false);
+        setAccessError('');
+      } catch (err) {
+        console.error('Error checking owner access:', err);
+        if (err?.response?.status === 401) {
+          setRequiresLogin(true);
+          setIsAuthenticated(false);
+          setAccessError('');
+        } else if (err?.response?.status === 403) {
+          setRequiresLogin(false);
+          setIsAuthenticated(false);
+          setAccessError('This account is not an owner/admin for this business.');
+        } else {
+          setRequiresLogin(false);
+          setIsAuthenticated(false);
+          setAccessError('Unable to verify access right now. Please try again.');
+        }
       }
 
-      // Check if business has credentials configured
-      try {
-        const response = await api.get(`/businesses/${businessId}/admin/has-credentials`);
-        
-        if (response.data.hasCredentials) {
-          // Has credentials, show login modal
-          setShowLoginModal(true);
-        } else {
-          // No credentials, show setup modal
-          setShowSetupModal(true);
-        }
-      } catch (err) {
-        console.error('Error checking credentials:', err);
-        // Default to showing login
-        setShowLoginModal(true);
-      }
-      
       setCheckingAuth(false);
     };
 
     if (businessId) checkAuth();
   }, [businessId]);
 
-  // Handle successful login
-  const handleLoginSuccess = (token) => {
-    setIsAuthenticated(true);
-    setShowLoginModal(false);
-  };
-
   // Handle logout
-  const handleLogout = () => {
-    sessionStorage.removeItem(`business_admin_token_${businessId}`);
-    setIsAuthenticated(false);
-    window.location.hash = `#/business/${businessId}`;
-  };
-
-  // Handle credential setup
-  const handleSetupCredentials = async () => {
-    setSetupError('');
-    
-    if (!setupUsername.trim() || !setupPassword) {
-      setSetupError('Please enter both username and password');
-      return;
-    }
-    
-    if (setupPassword.length < 4) {
-      setSetupError('Password must be at least 4 characters');
-      return;
-    }
-
+  const handleLogout = async () => {
+    try { await supabase.auth.signOut(); } catch (e) {}
+    try { localStorage.removeItem('supabase_access_token'); } catch (e) {}
     try {
-      await api.post(`/businesses/${businessId}/admin/credentials`, {
-        username: setupUsername.trim(),
-        password: setupPassword,
-      });
-
-      // Auto-login after setup
-      const loginResponse = await api.post(`/businesses/${businessId}/admin/login`, {
-        username: setupUsername.trim(),
-        password: setupPassword,
-      });
-
-      if (loginResponse.data.success) {
-        sessionStorage.setItem(`business_admin_token_${businessId}`, loginResponse.data.token);
-        setIsAuthenticated(true);
-        setShowSetupModal(false);
-        setAlertMessage('Admin credentials created successfully!');
-        setAlertVariant('success');
+      if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+        delete api.defaults.headers.common['Authorization'];
       }
-    } catch (err) {
-      console.error('Error setting up credentials:', err);
-      setSetupError(err.response?.data?.error || 'Failed to set up credentials');
-    }
-  };
-
-  // Handle cancel (go back to business page)
-  const handleCancel = () => {
-    window.location.hash = `#/business/${businessId}`;
+    } catch (e) {}
+    setIsAuthenticated(false);
+    window.location.hash = '#/login';
   };
 
   // Fetch business details
@@ -298,86 +261,28 @@ const BusinessAdmin = ({ businessId }) => {
     );
   }
 
-  // Show login modal if not authenticated
+  // Not authenticated/authorized for this business
   if (!isAuthenticated) {
     return (
-      <>
-        <BusinessLoginModal
-          open={showLoginModal}
-          businessId={businessId}
-          businessName={business?.name}
-          onClose={handleCancel}
-          onLoginSuccess={handleLoginSuccess}
-        />
-
-        {/* Setup credentials modal for first-time access */}
-        <Dialog 
-          open={showSetupModal} 
-          onClose={handleCancel}
-          maxWidth="xs" 
-          fullWidth
-          PaperProps={{
-            sx: { borderRadius: 3 }
-          }}
-        >
-          <DialogTitle sx={{ textAlign: 'center', pt: 3 }}>
-            <IconButton
-              onClick={handleCancel}
-              sx={{ position: 'absolute', right: 8, top: 8, color: 'grey.500' }}
-            >
-              <CloseIcon />
-            </IconButton>
-            <Typography variant="h5" fontWeight={600}>
-              Set Up Admin Access
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Create admin credentials for this business
-            </Typography>
-          </DialogTitle>
-          
-          <DialogContent sx={{ pt: 2 }}>
-            {setupError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {setupError}
-              </Alert>
-            )}
-            
-            <TextField
-              fullWidth
-              label="Username"
-              value={setupUsername}
-              onChange={(e) => setSetupUsername(e.target.value)}
-              sx={{ mb: 2 }}
-              autoFocus
-            />
-            
-            <TextField
-              fullWidth
-              label="Password"
-              type="password"
-              value={setupPassword}
-              onChange={(e) => setSetupPassword(e.target.value)}
-              helperText="At least 4 characters"
-            />
-          </DialogContent>
-          
-          <DialogActions sx={{ p: 3, pt: 1, flexDirection: 'column', gap: 1 }}>
-            <Button
-              variant="contained"
-              fullWidth
-              size="large"
-              onClick={handleSetupCredentials}
-              disabled={!setupUsername.trim() || setupPassword.length < 4}
-              sx={{ py: 1.5, borderRadius: 2 }}
-            >
-              Create Admin Account
-            </Button>
-            <Button variant="text" onClick={handleCancel}>
-              Cancel
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </>
+      <Container maxWidth="sm" sx={{ py: 5 }}>
+        {requiresLogin ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Please sign in with your business owner account to access this admin page.
+          </Alert>
+        ) : (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {accessError || 'You do not have access to this business admin page.'}
+          </Alert>
+        )}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="contained" onClick={() => { window.location.hash = '#/login'; }}>
+            Go to Login
+          </Button>
+          <Button variant="outlined" onClick={() => { window.location.hash = `#/business/${businessId}`; }}>
+            Back to Business Page
+          </Button>
+        </Box>
+      </Container>
     );
   }
 
@@ -656,7 +561,7 @@ const BusinessAdmin = ({ businessId }) => {
                             )}
                           </TableCell>
                           <TableCell>
-                            {review.consent_granted && !review.consent_revoked_at && localStorage.getItem('supabase_access_token') ? (
+                            {review.consent_granted && !review.consent_revoked_at && isAuthenticated ? (
                               <Button
                                 size="small"
                                 color="warning"

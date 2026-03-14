@@ -3,11 +3,27 @@ const router = express.Router();
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
-const { requirePlan } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
+const { getAdminPool } = require('../tenantManager');
 
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const attachBusinessContext = (req, res, next) => {
+  req.businessId = req.params.businessId;
+  req.db = getAdminPool();
+  next();
+};
+const requireAdminApiKey = (req, res, next) => {
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected) {
+    return res.status(403).json({ error: 'ADMIN_API_KEY is not configured' });
+  }
+  const provided = req.headers['x-admin-key'];
+  if (!provided || provided !== expected) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
 
 // Create a new business (authenticated users become owner)
 router.post('/', authMiddleware, asyncHandler(businessController.createBusiness));
@@ -20,13 +36,13 @@ router.get('/', asyncHandler(businessController.listBusinesses));
 // =============================================================================
 
 // Get generation status for ALL businesses
-router.get('/generation/status', asyncHandler(async (req, res) => {
+router.get('/generation/status', requireAdminApiKey, asyncHandler(async (req, res) => {
   const result = await templateGenerationJob.getGenerationStatus();
   res.json(result);
 }));
 
 // Trigger generation for ALL businesses that need it
-router.post('/generation/trigger-all', asyncHandler(async (req, res) => {
+router.post('/generation/trigger-all', requireAdminApiKey, asyncHandler(async (req, res) => {
   // Run in background, don't block the response
   setImmediate(async () => {
     try {
@@ -47,22 +63,9 @@ router.post('/generation/trigger-all', asyncHandler(async (req, res) => {
 // =============================================================================
 
 // Get plan for a specific business
-router.get('/:businessId/plan', asyncHandler(businessController.getPlan));
+router.get('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.getPlan));
 
 // Update plan for a business (owner only in production; open in dev for testing)
-router.put('/:businessId/plan', asyncHandler(businessController.updatePlan));
-
-// =============================================================================
-// Business Admin Authentication Routes
-// =============================================================================
-
-// Check if business has admin credentials configured
-router.get('/:businessId/admin/has-credentials', asyncHandler(businessController.hasAdminCredentials));
-
-// Set/update admin credentials for a business
-router.post('/:businessId/admin/credentials', asyncHandler(businessController.setAdminCredentials));
-
-// Verify admin login
-router.post('/:businessId/admin/login', asyncHandler(businessController.verifyAdminLogin));
+router.put('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.updatePlan));
 
 module.exports = router;

@@ -28,6 +28,25 @@ router.post(
 // Get all in-app reviews for My Reviews
 router.get('/reviews', asyncHandler(templatesController.getMyReviews));
 
+// Compose review from guided Q&A answers (public)
+router.post(
+  '/reviews/compose',
+  [
+    body('answers').isObject(),
+    body('skippedKeys').optional().isArray(),
+  ],
+  asyncHandler(templatesController.composeReview)
+);
+
+// Polish review text with AI (public)
+router.post(
+  '/reviews/polish',
+  [
+    body('reviewText').isString().trim().isLength({ min: 1, max: 2000 }),
+  ],
+  asyncHandler(templatesController.polishReview)
+);
+
 // Revoke consent for a specific review (admin feature)
 router.post(
   '/reviews/:id/consent/revoke',
@@ -40,8 +59,13 @@ router.post(
 // Get business details for the current tenant
 router.get('/business', asyncHandler(businessController.getBusiness));
 
-// Update business details for the current tenant
-router.put('/business', asyncHandler(businessController.updateBusiness));
+// Update business details for the current tenant (owner only)
+router.put('/business', authMiddleware, ownerMiddleware, asyncHandler(businessController.updateBusiness));
+
+// Verify that current authenticated user can access this business admin
+router.get('/admin/access', authMiddleware, ownerMiddleware, asyncHandler(async (req, res) => {
+  res.json({ ok: true, role: req.userRole || 'owner' });
+}));
 
 // Note: this router is mounted under /api/:businessId so templatesController
 // uses req.db (attached by businessMiddleware) to talk to that tenant's DB.
