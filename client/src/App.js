@@ -74,7 +74,7 @@ function BusinessTemplatePage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [ownReviewText, setOwnReviewText] = useState('');
   const [templateReviewText, setTemplateReviewText] = useState('');
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [copyToast, setCopyToast] = useState('');
@@ -93,6 +93,7 @@ function BusinessTemplatePage() {
   const [composeStep, setComposeStep] = useState(0);
   const [composeLoading, setComposeLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
+  const isErrorMessage = /could not|error|failed|forbidden|invalid|missing/i.test(String(successMessage || ''));
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -140,10 +141,27 @@ function BusinessTemplatePage() {
     setPendingTemplate(null);
   };
 
-  const handleUseEditedTemplate = () => {
-    setTemplateReviewText(templateEditorText || '');
+  const openChannelWithText = async (channelName, textToCopy) => {
+    const url = getChannelUrl(channelName);
+    try {
+      await navigator.clipboard.writeText(textToCopy || '');
+    } catch (e) {
+      // ignore clipboard permission failures
+    }
+    if (url) window.open(url, '_blank');
+  };
+
+  const handleUseEditedTemplate = async () => {
+    const editedText = String(templateEditorText || '').trim();
+    if (!editedText || !selectedTemplateId) return;
+    setTemplateReviewText(editedText);
     setShowTemplateEditor(false);
-    setSuccessMessage('Template review is ready to submit.');
+    await submitReviewAndOpenChannels({
+      text: editedText,
+      templateId: selectedTemplateId,
+      requireConsent: true,
+      suppressChannelPopup: true,
+    });
   };
 
   const getChannelUrl = (channelName) => {
@@ -162,7 +180,7 @@ function BusinessTemplatePage() {
     return null;
   };
 
-  const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false }) => {
+  const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false, autoOpenChannel = null, suppressChannelPopup = false }) => {
     if (!text.trim() || !rating) return;
     if (requireConsent && !consentAccepted) {
       setShowTemplateAssist(true);
@@ -179,8 +197,14 @@ function BusinessTemplatePage() {
       });
       setLastSavedReview(text.trim());
       setRevokeConsentUrl(response?.data?.revokeConsentUrl || '');
-      setSuccessMessage('Review taken');
-      setShowChannelPopup(true);
+      setSuccessMessage(suppressChannelPopup ? 'Template saved successfully.' : 'Review taken');
+      if (suppressChannelPopup) {
+        setShowChannelPopup(false);
+      } else if (autoOpenChannel) {
+        await openChannelWithText(autoOpenChannel, text.trim());
+      } else {
+        setShowChannelPopup(true);
+      }
       if (typeof refresh === 'function') await refresh(businessId);
     } catch (err) {
       console.error('Error submitting review', err);
@@ -295,19 +319,8 @@ function BusinessTemplatePage() {
     }
   };
 
-  const handleSubmitTemplateReview = () => {
-    if (!selectedTemplateId) return;
-    submitReviewAndOpenChannels({ text: templateReviewText, templateId: selectedTemplateId, requireConsent: true });
-  };
-
   const handlePostToChannel = async (channelName) => {
-    const url = getChannelUrl(channelName);
-    try {
-      await navigator.clipboard.writeText(lastSavedReview || ownReviewText || templateReviewText || '');
-    } catch (e) {
-      // ignore clipboard permission failures
-    }
-    if (url) window.open(url, '_blank');
+    await openChannelWithText(channelName, lastSavedReview || ownReviewText || templateReviewText || '');
     setShowChannelPopup(false);
   };
 
@@ -406,7 +419,7 @@ function BusinessTemplatePage() {
           onClose={() => setSuccessMessage('')}
           anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         >
-          <Alert onClose={() => setSuccessMessage('')} severity={successMessage === 'Review taken' ? 'success' : 'error'}>
+          <Alert onClose={() => setSuccessMessage('')} severity={isErrorMessage ? 'error' : 'success'}>
             {successMessage}
           </Alert>
         </Snackbar>
@@ -449,7 +462,7 @@ function BusinessTemplatePage() {
                 Share Your Review
               </Typography>
               <Typography variant="body2" sx={{ color: '#475569', mt: 0.4 }}>
-                Write your own feedback or tap a template below to prefill your message.
+                Write your own feedback, or tap <strong>I&apos;m busy</strong> below to choose a template that best matches your experience.
               </Typography>
             </Box>
           </Stack>
@@ -472,30 +485,51 @@ function BusinessTemplatePage() {
                 </Typography>
                 <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
               </Box>
-              <TextField
-                fullWidth
-                multiline
-                rows={6}
-                placeholder="Tell others what stood out about your visit..."
-                value={ownReviewText}
-                onChange={(e) => setOwnReviewText(e.target.value)}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 2,
-                    backgroundColor: '#fff',
-                  },
-                }}
-              />
-              <Typography variant="caption" sx={{ color: '#64748b' }}>
-                {ownReviewText.trim().length} characters
-              </Typography>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ position: 'relative' }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={6}
+                  placeholder="Tell others what stood out about your visit..."
+                  value={ownReviewText}
+                  onChange={(e) => setOwnReviewText(e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      backgroundColor: '#fff',
+                    },
+                    '& .MuiInputBase-inputMultiline': {
+                      pb: 7,
+                    },
+                  }}
+                />
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: 14,
+                    bottom: 12,
+                    display: 'flex',
+                    gap: 1,
+                    zIndex: 1,
+                    pointerEvents: 'none',
+                  }}
+                >
                   <Button
                     variant="outlined"
                     size="small"
                     startIcon={<AutoAwesomeIcon />}
                     onClick={handleCompose}
+                    sx={{
+                      pointerEvents: 'auto',
+                      borderColor: 'rgba(16, 185, 129, 0.6)',
+                      color: '#059669',
+                      backgroundColor: 'rgba(236, 253, 245, 0.95)',
+                      borderRadius: 999,
+                      '&:hover': {
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(220, 252, 231, 0.95)',
+                      },
+                    }}
                   >
                     Compose
                   </Button>
@@ -505,10 +539,32 @@ function BusinessTemplatePage() {
                     startIcon={<AutoFixHighIcon />}
                     onClick={handlePolishOwnReview}
                     disabled={!ownReviewText.trim() || polishLoading}
+                    sx={{
+                      pointerEvents: 'auto',
+                      borderColor: 'rgba(16, 185, 129, 0.6)',
+                      color: '#059669',
+                      backgroundColor: 'rgba(236, 253, 245, 0.95)',
+                      borderRadius: 999,
+                      '&:hover': {
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(220, 252, 231, 0.95)',
+                      },
+                      '&.Mui-disabled': {
+                        borderColor: 'rgba(148, 163, 184, 0.45)',
+                        color: 'rgba(100, 116, 139, 0.9)',
+                        backgroundColor: 'rgba(241, 245, 249, 0.85)',
+                      },
+                    }}
                   >
                     {polishLoading ? 'Polishing...' : 'Polish'}
                   </Button>
                 </Box>
+              </Box>
+              <Typography variant="caption" sx={{ color: '#64748b' }}>
+                {ownReviewText.trim().length} characters
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Box />
                 <Button
                   variant="contained"
                   onClick={handleSubmitOwnReview}
@@ -600,24 +656,9 @@ function BusinessTemplatePage() {
             </>
           )}
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.2} sx={{ mt: 2.5 }}>
-            <Typography variant="body2" sx={{ color: '#64748b' }}>
-              Review is saved inside the app first, then you can post externally if you want.
-            </Typography>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={handleSubmitTemplateReview}
-              disabled={submitting || !rating || !consentAccepted || !selectedTemplateId || !templateReviewText.trim()}
-              sx={{
-                px: 3,
-                minWidth: { xs: '100%', sm: 200 },
-                boxShadow: '0 12px 24px rgba(5, 150, 105, 0.3)',
-              }}
-            >
-              {submitting ? 'Submitting...' : 'Submit Template Review'}
-            </Button>
-          </Stack>
+          <Typography variant="body2" sx={{ color: '#64748b', mt: 2.5 }}>
+            Selecting <strong>Use This Review</strong> saves your review securely within the app.
+          </Typography>
         </Paper>
 
         <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
@@ -675,8 +716,14 @@ function BusinessTemplatePage() {
           <DialogTitle>Edit Template</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Edit this template however you like, then apply it to your review.
+              Edit this template however you like, then use it to save in the app.
             </Typography>
+            <Box sx={{ mb: 1.5 }}>
+              <Typography variant="body2" sx={{ mb: 0.6, fontWeight: 600, color: '#334155' }}>
+                Rating
+              </Typography>
+              <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
+            </Box>
             <TextField
               autoFocus
               fullWidth
