@@ -193,12 +193,16 @@ function BusinessTemplatePage() {
     }
     setSubmitting(true);
     try {
-      const response = await api.post(`/${businessId}/reviews`, {
-        templateId,
+      const requestBody = {
         rating,
         reviewText: text.trim(),
-        consentAccepted: requireConsent ? consentAccepted : false,
-      });
+        consentAccepted: requireConsent ? consentAccepted : (consentAccepted === true),
+      };
+      if (Number.isInteger(templateId) && templateId > 0) {
+        requestBody.templateId = templateId;
+      }
+
+      const response = await api.post(`/${businessId}/reviews`, requestBody);
       const revokeUrl = response?.data?.revokeConsentUrl || '';
       setLastSavedReview(text.trim());
       setRevokeConsentUrl(revokeUrl);
@@ -215,7 +219,10 @@ function BusinessTemplatePage() {
       if (typeof refresh === 'function') await refresh(businessId);
     } catch (err) {
       console.error('Error submitting review', err);
-      setSuccessMessage('Could not save your review. Please try again.');
+      const backendMessage = err?.response?.data?.message
+        || (Array.isArray(err?.response?.data?.errors) && err.response.data.errors[0]?.msg)
+        || null;
+      setSuccessMessage(backendMessage || 'Could not save your review. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -498,6 +505,21 @@ function BusinessTemplatePage() {
                 </Typography>
                 <Rating value={rating} onChange={(_, v) => setRating(v || 0)} />
               </Box>
+              <FormControlLabel
+                sx={{ mt: -0.5 }}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={consentAccepted}
+                    onChange={(e) => setConsentAccepted(e.target.checked)}
+                  />
+                }
+                label={
+                  <Typography variant="caption" sx={{ color: '#64748b' }}>
+                    I consent to this review being used in marketing/public content.
+                  </Typography>
+                }
+              />
               <Box sx={{ position: 'relative' }}>
                 <TextField
                   fullWidth
