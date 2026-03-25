@@ -67,6 +67,7 @@ describe('review consent flow', () => {
     const payload = res.json.mock.calls[0][0];
     expect(payload).toHaveProperty('revokeConsentUrl');
     expect(payload.revokeConsentUrl).toContain('/#/reviews/revoke-consent?token=');
+    expect(payload).toHaveProperty('revokeAvailable', true);
     expect(payload).toHaveProperty('consentStatementVersion', 'v1');
     expect(payload.review).toHaveProperty('consent_granted', true);
     expect(next).not.toHaveBeenCalled();
@@ -103,6 +104,7 @@ describe('review consent flow', () => {
     const payload = res.json.mock.calls[0][0];
     expect(payload.review).toHaveProperty('consent_granted', false);
     expect(payload).toHaveProperty('revokeConsentUrl', null);
+    expect(payload).toHaveProperty('revokeAvailable', false);
     expect(next).not.toHaveBeenCalled();
   });
 

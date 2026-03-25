@@ -26,3 +26,12 @@ Examples:
 
 `vite.config.js` proxies `/api` to `http://localhost:4000` by default.
 Override with `VITE_BACKEND_URL` if needed.
+
+## Current UI Notes
+
+- Business Admin (`/#/business/:businessId/admin`) includes:
+  - Active and backup template management
+  - My Reviews table
+  - Branding + logo upload
+  - Review platform link management (Google/Booking/etc.)
+- On first signup/onboarding, admin can show a loading spinner while starter templates are generated and then auto-refresh when templates are ready.

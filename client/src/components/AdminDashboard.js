@@ -37,7 +37,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import api from '../api';
 import LogsViewer from './LogsViewer';
 
@@ -47,12 +46,18 @@ const DEFAULT_REVIEW_PLATFORMS = [
   { name: 'Booking.com', url: '' },
 ];
 
+function normalizeUrl(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
 const AdminDashboard = () => {
   const [templates, setTemplates] = useState([]);
   const [backupTemplates, setBackupTemplates] = useState([]);
   const [businesses, setBusinesses] = useState([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState(null);
-  const [newBusinessName, setNewBusinessName] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -61,9 +66,12 @@ const AdminDashboard = () => {
   const [editingBackup, setEditingBackup] = useState(false);
   const [selectedTemplates, setSelectedTemplates] = useState([]);
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
 
@@ -87,9 +95,27 @@ const AdminDashboard = () => {
     }
   }, [selectedBusinessId]);
 
+  const fetchReviews = useCallback(async (bizId = selectedBusinessId) => {
+    if (!bizId) {
+      setReviews([]);
+      return;
+    }
+    setReviewsLoading(true);
+    try {
+      const res = await api.get(`/${bizId}/reviews`);
+      setReviews(Array.isArray(res?.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+      setReviews([]);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [selectedBusinessId]);
+
   const loadSettings = useCallback(() => {
     const settings = JSON.parse(localStorage.getItem('settings')) || {};
     setGoogleReviewUrl(settings.googleReviewUrl || '');
+    setLogoUrl(settings.logoUrl || '');
     setBusinessName(settings.businessName || '');
     setWelcomeMessage(settings.welcomeMessage || '');
     setSelectedBusinessId(settings.businessId || null);
@@ -114,6 +140,7 @@ const AdminDashboard = () => {
           const biz = resBiz.data || {};
           setBusinessName(biz.name || '');
           setGoogleReviewUrl(biz.google_review_url || '');
+          setLogoUrl(biz.logo_url || '');
           setWelcomeMessage(biz.welcome_message || '');
         } catch (err) {
           console.error('Error loading auto-selected business details', err);
@@ -137,9 +164,11 @@ const AdminDashboard = () => {
         const biz = res.data || {};
         setBusinessName(biz.name || '');
         setGoogleReviewUrl(biz.google_review_url || '');
+        setLogoUrl(biz.logo_url || '');
         setWelcomeMessage(biz.welcome_message || '');
         setReviewPlatforms(biz.review_platforms || DEFAULT_REVIEW_PLATFORMS);
         fetchTemplates(bizId);
+        fetchReviews(bizId);
       } catch (err) {
         console.error('Error loading business details', err);
       }
@@ -148,15 +177,7 @@ const AdminDashboard = () => {
     if (selectedBusinessId) {
       loadTenantData(selectedBusinessId);
     }
-  }, [selectedBusinessId, fetchTemplates]);
-
-  // Copy admin URL to clipboard
-  const handleCopyAdminUrl = () => {
-    const url = `${window.location.origin}/#/business/${selectedBusinessId}/admin`;
-    navigator.clipboard.writeText(url);
-    setAlertMessage('Admin URL copied to clipboard');
-    setAlertVariant('success');
-  };
+  }, [selectedBusinessId, fetchTemplates, fetchReviews]);
 
   // whenever selected business changes also load backups
   useEffect(() => {
@@ -165,24 +186,34 @@ const AdminDashboard = () => {
 
   const saveSettings = async () => {
     try {
+      const normalizedPlatforms = (Array.isArray(reviewPlatforms) ? reviewPlatforms : [])
+        .map((p) => ({
+          name: String(p?.name || '').trim(),
+          url: normalizeUrl(p?.url),
+        }))
+        .filter((p) => p.name || p.url);
+
       // Save to backend
       if (selectedBusinessId) {
         await api.put(`/${selectedBusinessId}/business`, {
-          name: businessName,
-          google_review_url: googleReviewUrl,
-          welcome_message: welcomeMessage,
-          review_platforms: reviewPlatforms,
+          name: String(businessName || '').trim(),
+          google_review_url: normalizeUrl(googleReviewUrl),
+          logo_url: logoUrl || null,
+          welcome_message: String(welcomeMessage || '').trim(),
+          review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
         });
       }
       // Also save to localStorage for quick access
       const settings = {
-        googleReviewUrl,
-        businessName,
-        welcomeMessage,
-        reviewPlatforms,
+        googleReviewUrl: normalizeUrl(googleReviewUrl),
+        logoUrl,
+        businessName: String(businessName || '').trim(),
+        welcomeMessage: String(welcomeMessage || '').trim(),
+        reviewPlatforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
         businessId: selectedBusinessId
       };
       localStorage.setItem('settings', JSON.stringify(settings));
+      setReviewPlatforms(settings.reviewPlatforms);
       setAlertMessage('Settings saved successfully');
       setAlertVariant('success');
     } catch (err) {
@@ -301,22 +332,43 @@ const AdminDashboard = () => {
     );
   };
 
-  const handleCreateBusiness = async () => {
-    try {
-      if (!newBusinessName) return setAlertMessage('Business name required');
-          await api.post('/businesses', { name: newBusinessName });
-      setAlertMessage('Business created');
-      setAlertVariant('success');
-      setNewBusinessName('');
-      await loadBusinesses();
-    } catch (err) {
-      console.error(err);
-      setAlertMessage('Error creating business');
+  const handleLogoFileUpload = (event) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setAlertMessage('Please upload an image file');
       setAlertVariant('danger');
+      return;
     }
+    // Protect save payload: backend JSON body limit is 100KB by default.
+    if (file.size > 70 * 1024) {
+      setAlertMessage('Logo is too large. Please use an image under 70KB.');
+      setAlertVariant('danger');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      if (!dataUrl) return;
+      setLogoUrl(dataUrl);
+    };
+    reader.onerror = () => {
+      setAlertMessage('Could not read logo file');
+      setAlertVariant('danger');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSelectBusiness = async (bizId) => {
+    if (!bizId) {
+      setSelectedBusinessId(null);
+      setBusinessName('');
+      setGoogleReviewUrl('');
+      setLogoUrl('');
+      setWelcomeMessage('');
+      setReviewPlatforms(DEFAULT_REVIEW_PLATFORMS);
+      return;
+    }
     setSelectedBusinessId(bizId);
     const settings = JSON.parse(localStorage.getItem('settings')) || {};
     settings.businessId = bizId;
@@ -327,12 +379,15 @@ const AdminDashboard = () => {
       const biz = res.data || {};
       setBusinessName(biz.name || '');
       setGoogleReviewUrl(biz.google_review_url || '');
+      setLogoUrl(biz.logo_url || '');
       setWelcomeMessage(biz.welcome_message || '');
+      setReviewPlatforms(Array.isArray(biz.review_platforms) ? biz.review_platforms : DEFAULT_REVIEW_PLATFORMS);
     } catch (err) {
       console.error('Error loading business details', err);
     }
     fetchTemplates(bizId);
     fetchBackups(bizId);
+    fetchReviews(bizId);
   };
 
   return (
@@ -385,67 +440,8 @@ const AdminDashboard = () => {
                 </Select>
               </FormControl>
 
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                Create Business
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  value={newBusinessName}
-                  onChange={e => setNewBusinessName(e.target.value)}
-                  placeholder="Business name"
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={handleCreateBusiness}
-                >
-                  Create
-                </Button>
-              </Box>
             </CardContent>
           </Card>
-
-          {/* Business Admin Access Card */}
-          {selectedBusinessId && (
-            <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
-              <CardHeader
-                title="Business Admin Access"
-                sx={{
-                  background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
-                  '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
-                }}
-              />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Owners sign in via Supabase and can access this business admin page directly.
-                </Typography>
-
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<ContentCopyIcon />}
-                    onClick={handleCopyAdminUrl}
-                  >
-                    Copy Admin URL
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<OpenInNewIcon />}
-                    onClick={() => window.open(`${window.location.origin}/#/business/${selectedBusinessId}/admin`, '_blank')}
-                  >
-                    Open Admin Page
-                  </Button>
-                </Box>
-
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                  Admin URL: {window.location.origin}/#/business/{selectedBusinessId}/admin
-                </Typography>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Templates Card */}
           <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
@@ -605,6 +601,35 @@ const AdminDashboard = () => {
                 sx={{ mb: 2 }}
               />
 
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Company Logo
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                <Button component="label" variant="outlined" size="small">
+                  Upload Logo
+                  <input type="file" accept="image/*" hidden onChange={handleLogoFileUpload} />
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="error"
+                  onClick={() => setLogoUrl('')}
+                  disabled={!logoUrl}
+                >
+                  Remove Logo
+                </Button>
+              </Box>
+              {logoUrl && (
+                <Box sx={{ mb: 2 }}>
+                  <Box
+                    component="img"
+                    src={logoUrl}
+                    alt="Company logo preview"
+                    sx={{ maxHeight: 64, width: 'auto', borderRadius: 1, border: '1px solid rgba(148,163,184,0.35)', p: 0.5, bgcolor: '#fff' }}
+                  />
+                </Box>
+              )}
+
               <TextField
                 fullWidth
                 label="Welcome Message"
@@ -645,7 +670,7 @@ const AdminDashboard = () => {
                   />
                   <IconButton
                     size="small"
-                    onClick={() => window.open(platform.url, '_blank')}
+                    onClick={() => window.open(normalizeUrl(platform.url), '_blank')}
                     disabled={!platform.url}
                     title="Test Link"
                   >
@@ -689,7 +714,7 @@ const AdminDashboard = () => {
                 variant="outlined"
                 size="small"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open(googleReviewUrl, '_blank')}
+                onClick={() => window.open(normalizeUrl(googleReviewUrl), '_blank')}
                 disabled={!googleReviewUrl}
                 sx={{ mb: 3 }}
               >
@@ -713,12 +738,80 @@ const AdminDashboard = () => {
                     setBusinessName(''); 
                     setWelcomeMessage(''); 
                     setGoogleReviewUrl(''); 
+                    setLogoUrl('');
                     setReviewPlatforms(DEFAULT_REVIEW_PLATFORMS);
                   }}
                 >
                   Reset
                 </Button>
               </Box>
+            </CardContent>
+          </Card>
+
+          {/* Logs Card */}
+          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+            <CardHeader
+              title="My Reviews"
+              action={(
+                <Button
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => fetchReviews(selectedBusinessId)}
+                  disabled={!selectedBusinessId || reviewsLoading}
+                >
+                  Refresh
+                </Button>
+              )}
+              sx={{
+                background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
+                '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
+              }}
+            />
+            <CardContent>
+              {!selectedBusinessId && (
+                <Typography variant="body2" color="text.secondary">
+                  Select a business to view submitted reviews.
+                </Typography>
+              )}
+
+              {selectedBusinessId && reviewsLoading && (
+                <Typography variant="body2" color="text.secondary">
+                  Loading reviews...
+                </Typography>
+              )}
+
+              {selectedBusinessId && !reviewsLoading && reviews.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  No reviews submitted yet.
+                </Typography>
+              )}
+
+              {selectedBusinessId && !reviewsLoading && reviews.length > 0 && (
+                <TableContainer component={Paper} sx={{ maxHeight: '40vh' }}>
+                  <Table stickyHeader size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ width: 120 }}>Date</TableCell>
+                        <TableCell sx={{ width: 80 }}>Rating</TableCell>
+                        <TableCell>Review</TableCell>
+                        <TableCell sx={{ width: 120 }}>Source</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {reviews.map((review) => (
+                        <TableRow key={review.id} hover>
+                          <TableCell>
+                            {review.created_at ? new Date(review.created_at).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell>{review.rating || '-'}</TableCell>
+                          <TableCell>{review.review_text || '-'}</TableCell>
+                          <TableCell>{review.template_id ? 'Template' : 'Own review'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </CardContent>
           </Card>
 

@@ -78,6 +78,7 @@ exports.submitReview = async (req, res, next) => {
       message: 'Review taken',
       review: inserted.rows[0],
       revokeConsentUrl: revokeToken ? `${protocol}://${host}/#/reviews/revoke-consent?token=${encodeURIComponent(revokeToken)}` : null,
+      revokeAvailable: Boolean(revokeToken),
       consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });
   } catch (err) {

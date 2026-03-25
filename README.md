@@ -17,9 +17,12 @@ A multi-tenant SaaS platform that helps businesses collect customer reviews thro
 - **Stripe Billing** — Subscription tiers (Starter/Pro/Pro Max/Enterprise)
 - **Template Rotation** — Used templates auto-archive; backups promote to active
 - **Flexible Review Entry** — Users can write their own review or use/edit templates
-- **Clipboard-First Sharing** — Own-review flow copies text to clipboard and prompts channel selection
-- **Consent + Revocation** — Template-based submission stores marketing/public-use consent with revocation support
+- **Save-First Review Flow** — Reviews are saved in-app before any external-share prompt
+- **Consent + Revocation** — Template-based submission stores consent and returns a one-time revoke link
+- **Revoke Link UX** — Success modal can display revoke link with copy/open actions for anonymous customers
 - **My Reviews** — Every submitted review is stored centrally per business and visible in Business Admin
+- **Branding + External Links in Admin** — Owners can upload logo and manage review-platform URLs from Business Admin
+- **Signup Template Generation Loading** — New owners see a spinner in admin while onboarding templates are being generated
 
 ## Customer Flow (Current)
 
@@ -29,12 +32,13 @@ A multi-tenant SaaS platform that helps businesses collect customer reviews thro
 4. AI-generated output is inserted into the own-review box; `Polish` can further rewrite for grammar/clarity
 5. If user clicks `I'm busy`, templates are shown; template selection opens an editor modal
 6. Template-based submission requires explicit marketing/public-use consent (stored for audit)
-7. Own-review path copies text to clipboard directly and opens sharing prompt
-8. Post-action popup offers:
+7. Template success modal can show revoke link (`Copy Link` / `Open Revoke Page`) and stores review in-app
+8. Own-review path saves review first, then opens sharing prompt
+9. Post-action popup offers:
    - Post on Google
    - Post on TripAdvisor
    - Skip
-9. If a channel is selected, the platform link opens in a new tab with review text ready to paste
+10. If a channel is selected, the platform link opens in a new tab with review text ready to paste
 
 ## Tech Stack
 
@@ -72,7 +76,7 @@ REACT_APP_SUPABASE_ANON_KEY=eyJ...
 | `GET /api/:businessId/templates` | Get active templates |
 | `POST /api/:businessId/reviews/compose` | Generate review text from guided answers (AI) |
 | `POST /api/:businessId/reviews/polish` | Rewrite review text for grammar/clarity (AI) |
-| `POST /api/:businessId/reviews` | Submit in-app review (rating + review text; consent required for template-based submissions) |
+| `POST /api/:businessId/reviews` | Submit in-app review; returns `revokeConsentUrl` and `revokeAvailable` when consent is granted |
 | `GET /api/:businessId/reviews` | Get all saved reviews for My Reviews |
 | `POST /api/reviews/consent/revoke` | Public token-based consent revocation |
 | `POST /api/:businessId/reviews/:id/consent/revoke` | Owner/admin revoke consent for a saved review |

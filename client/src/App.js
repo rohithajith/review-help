@@ -79,8 +79,10 @@ function BusinessTemplatePage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [copyToast, setCopyToast] = useState('');
   const [showChannelPopup, setShowChannelPopup] = useState(false);
+  const [showExternalOptions, setShowExternalOptions] = useState(true);
   const [lastSavedReview, setLastSavedReview] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [revokeAvailable, setRevokeAvailable] = useState(false);
   const [revokeConsentUrl, setRevokeConsentUrl] = useState('');
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateEditorText, setTemplateEditorText] = useState('');
@@ -94,6 +96,7 @@ function BusinessTemplatePage() {
   const [composeLoading, setComposeLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
   const isErrorMessage = /could not|error|failed|forbidden|invalid|missing/i.test(String(successMessage || ''));
+  const businessLogoSrc = business?.logo_url || businessLogos[businessId] || '';
 
   // Fetch business details when businessId changes
   useEffect(() => {
@@ -160,7 +163,8 @@ function BusinessTemplatePage() {
       text: editedText,
       templateId: selectedTemplateId,
       requireConsent: true,
-      suppressChannelPopup: true,
+      suppressChannelPopup: false,
+      showExternalOptions: false,
     });
   };
 
@@ -180,7 +184,7 @@ function BusinessTemplatePage() {
     return null;
   };
 
-  const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false, autoOpenChannel = null, suppressChannelPopup = false }) => {
+  const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false, autoOpenChannel = null, suppressChannelPopup = false, showExternalOptions: nextShowExternalOptions = true }) => {
     if (!text.trim() || !rating) return;
     if (requireConsent && !consentAccepted) {
       setShowTemplateAssist(true);
@@ -195,9 +199,12 @@ function BusinessTemplatePage() {
         reviewText: text.trim(),
         consentAccepted: requireConsent ? consentAccepted : false,
       });
+      const revokeUrl = response?.data?.revokeConsentUrl || '';
       setLastSavedReview(text.trim());
-      setRevokeConsentUrl(response?.data?.revokeConsentUrl || '');
-      setSuccessMessage(suppressChannelPopup ? 'Template saved successfully.' : 'Review taken');
+      setRevokeConsentUrl(revokeUrl);
+      setRevokeAvailable(Boolean(response?.data?.revokeAvailable) || Boolean(revokeUrl));
+      setShowExternalOptions(nextShowExternalOptions);
+      setSuccessMessage('Review submitted.');
       if (suppressChannelPopup) {
         setShowChannelPopup(false);
       } else if (autoOpenChannel) {
@@ -216,15 +223,11 @@ function BusinessTemplatePage() {
 
   const handleSubmitOwnReview = async () => {
     if (!ownReviewText.trim()) return;
-    try {
-      await navigator.clipboard.writeText(ownReviewText.trim());
-      setCopyToast('Copied to clipboard');
-    } catch (e) {
-      setCopyToast('Could not copy automatically');
-    }
-    setLastSavedReview(ownReviewText.trim());
-    setRevokeConsentUrl('');
-    setShowChannelPopup(true);
+    await submitReviewAndOpenChannels({
+      text: ownReviewText,
+      templateId: null,
+      requireConsent: false,
+    });
   };
 
   const handleCompose = () => {
@@ -324,6 +327,16 @@ function BusinessTemplatePage() {
     setShowChannelPopup(false);
   };
 
+  const handleCopyRevokeLink = async () => {
+    if (!revokeConsentUrl) return;
+    try {
+      await navigator.clipboard.writeText(revokeConsentUrl);
+      setCopyToast('Revoke link copied');
+    } catch (e) {
+      setCopyToast('Could not copy revoke link');
+    }
+  };
+
   // Loading state
   if (loading) return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -360,11 +373,11 @@ function BusinessTemplatePage() {
     >
       <Container maxWidth="lg" sx={{ py: { xs: 2.5, md: 4 }, textAlign: 'left' }}>
         {/* Business Logo and Welcome Message */}
-        {businessLogos[businessId] && (
+        {businessLogoSrc && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', justifyContent: 'center', mb: 3 }}>
             <Box
               component="img"
-              src={businessLogos[businessId]}
+              src={businessLogoSrc}
               alt={business?.name || 'Business Logo'}
               sx={{
                 height: { xs: 68, md: 84 },
@@ -385,7 +398,7 @@ function BusinessTemplatePage() {
         )}
 
         {/* Business Name Header (if no logo configured) */}
-        {!businessLogos[businessId] && business?.name && (
+        {!businessLogoSrc && business?.name && (
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography variant="h4" sx={{ color: '#13243f', fontWeight: 700, letterSpacing: '-0.01em' }}>
               {business.name}
@@ -665,50 +678,82 @@ function BusinessTemplatePage() {
           <DialogTitle>Thank you for your valuable review</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Your valuable feedback helps us a lot. We have copied your review to the clipboard. If you would like, please choose a platform below to share it.
+              {showExternalOptions
+                ? 'Your review has been saved. If you would like, choose a platform below to share it.'
+                : 'Your review has been saved in the app.'}
             </Typography>
-            {revokeConsentUrl && (
-              <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
-                You can revoke marketing permission later using your unique revoke link.
-              </Typography>
+            {revokeAvailable && revokeConsentUrl && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1 }}>
+                  Save this link if you may want to withdraw consent later.
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={revokeConsentUrl}
+                  InputProps={{ readOnly: true }}
+                  sx={{ mb: 1 }}
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button variant="outlined" size="small" onClick={handleCopyRevokeLink}>
+                    Copy Link
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<OpenInNewIcon />}
+                    onClick={() => window.open(revokeConsentUrl, '_blank')}
+                  >
+                    Open Revoke Page
+                  </Button>
+                </Stack>
+              </Box>
             )}
           </DialogContent>
           <DialogActions sx={{ p: 2, pt: 0, flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-            <Button
-              size="medium"
-              variant="contained"
-              onClick={() => handlePostToChannel('Google')}
-              sx={{
-                py: 0.9,
-                width: 240,
-                borderRadius: 1.5,
-                px: 2,
-              }}
-            >
-              <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
-                <OpenInNewIcon fontSize="small" />
-                <Box component="span" sx={{ textAlign: 'left' }}>Google</Box>
-              </Box>
-            </Button>
-            <Button
-              size="medium"
-              variant="contained"
-              onClick={() => handlePostToChannel('TripAdvisor')}
-              sx={{
-                py: 0.9,
-                width: 240,
-                borderRadius: 1.5,
-                px: 2,
-              }}
-            >
-              <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
-                <OpenInNewIcon fontSize="small" />
-                <Box component="span" sx={{ textAlign: 'left' }}>TripAdvisor</Box>
-              </Box>
-            </Button>
-            <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
-              Skip
-            </Button>
+            {showExternalOptions ? (
+              <>
+                <Button
+                  size="medium"
+                  variant="contained"
+                  onClick={() => handlePostToChannel('Google')}
+                  sx={{
+                    py: 0.9,
+                    width: 240,
+                    borderRadius: 1.5,
+                    px: 2,
+                  }}
+                >
+                  <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                    <OpenInNewIcon fontSize="small" />
+                    <Box component="span" sx={{ textAlign: 'left' }}>Google</Box>
+                  </Box>
+                </Button>
+                <Button
+                  size="medium"
+                  variant="contained"
+                  onClick={() => handlePostToChannel('TripAdvisor')}
+                  sx={{
+                    py: 0.9,
+                    width: 240,
+                    borderRadius: 1.5,
+                    px: 2,
+                  }}
+                >
+                  <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                    <OpenInNewIcon fontSize="small" />
+                    <Box component="span" sx={{ textAlign: 'left' }}>TripAdvisor</Box>
+                  </Box>
+                </Button>
+                <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
+                  Skip
+                </Button>
+              </>
+            ) : (
+              <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
+                Close
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
 
@@ -716,7 +761,7 @@ function BusinessTemplatePage() {
           <DialogTitle>Edit Template</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Edit this template however you like, then use it to save in the app.
+              Edit this template however you like, then click Use This Review.
             </Typography>
             <Box sx={{ mb: 1.5 }}>
               <Typography variant="body2" sx={{ mb: 0.6, fontWeight: 600, color: '#334155' }}>

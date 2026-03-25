@@ -33,8 +33,21 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CloseIcon from '@mui/icons-material/Close';
 import LogoutIcon from '@mui/icons-material/Logout';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import api from '../api';
 import supabase from '../lib/supabaseClient';
+
+const DEFAULT_REVIEW_PLATFORMS = [
+  { name: 'Google', url: '' },
+  { name: 'Booking.com', url: '' },
+];
+
+function normalizeUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
+}
 
 // =============================================================================
 // BusinessAdmin - A simplified admin panel for business owners
@@ -58,9 +71,12 @@ const BusinessAdmin = ({ businessId }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState({ text: '' });
   const [editingBackup, setEditingBackup] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
   const [loading, setLoading] = useState(true);
+  const [templatesGenerating, setTemplatesGenerating] = useState(false);
 
   // Check if already authenticated (has valid session token)
   useEffect(() => {
@@ -124,7 +140,10 @@ const BusinessAdmin = ({ businessId }) => {
   const fetchBusiness = useCallback(async () => {
     try {
       const res = await api.get(`/${businessId}/business`);
-      setBusiness(res.data || null);
+      const data = res.data || null;
+      setBusiness(data);
+      setLogoUrl(data?.logo_url || '');
+      setReviewPlatforms(Array.isArray(data?.review_platforms) ? data.review_platforms : DEFAULT_REVIEW_PLATFORMS);
     } catch (err) {
       console.error('Error fetching business:', err);
     }
@@ -170,6 +189,61 @@ const BusinessAdmin = ({ businessId }) => {
     };
     if (businessId && isAuthenticated) loadData();
   }, [businessId, isAuthenticated, fetchBusiness, fetchTemplates, fetchBackups, fetchReviews]);
+
+  // If user just signed up and onboarding template generation is running,
+  // keep polling until templates are available so the admin page gives
+  // immediate visual feedback instead of showing an empty table.
+  useEffect(() => {
+    if (!businessId || !isAuthenticated) return undefined;
+    let active = true;
+    let timer = null;
+    let attempts = 0;
+
+    const storageKey = `templatesGenerating:${businessId}`;
+    const shouldTrackGeneration = (() => {
+      try { return sessionStorage.getItem(storageKey) === '1'; } catch { return false; }
+    })();
+    if (!shouldTrackGeneration) return undefined;
+
+    const poll = async () => {
+      attempts += 1;
+      if (!active) return;
+      setTemplatesGenerating(true);
+      try {
+        const [activeRes, backupRes] = await Promise.all([
+          api.get(`/${businessId}/templates`),
+          api.get(`/${businessId}/templates/backups`),
+        ]);
+        const activeTemplates = Array.isArray(activeRes?.data) ? activeRes.data : [];
+        const backupTemplates = Array.isArray(backupRes?.data) ? backupRes.data : [];
+        if (!active) return;
+        setTemplates(activeTemplates);
+        setBackupTemplates(backupTemplates);
+
+        if (activeTemplates.length > 0 || attempts >= 20) {
+          setTemplatesGenerating(false);
+          try { sessionStorage.removeItem(storageKey); } catch (e) { /* ignore */ }
+          return;
+        }
+      } catch (err) {
+        if (!active) return;
+        // Keep polling on transient failures until max attempts.
+        if (attempts >= 20) {
+          setTemplatesGenerating(false);
+          try { sessionStorage.removeItem(storageKey); } catch (e) { /* ignore */ }
+          return;
+        }
+      }
+
+      timer = setTimeout(poll, 2000);
+    };
+
+    poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [businessId, isAuthenticated]);
 
   // Create template handler
   const handleCreateTemplate = async () => {
@@ -249,6 +323,70 @@ const BusinessAdmin = ({ businessId }) => {
     }
   };
 
+  const handleLogoFileUpload = (event) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setAlertMessage('Please upload an image file');
+      setAlertVariant('error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setLogoUrl(String(reader.result || ''));
+    };
+    reader.onerror = () => {
+      setAlertMessage('Could not read logo file');
+      setAlertVariant('error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveBusinessSettings = async () => {
+    try {
+      const normalizedPlatforms = (Array.isArray(reviewPlatforms) ? reviewPlatforms : [])
+        .map((p) => ({
+          name: String(p?.name || '').trim(),
+          url: normalizeUrl(p?.url),
+        }))
+        .filter((p) => p.name || p.url);
+
+      await api.put(`/${businessId}/business`, {
+        logo_url: logoUrl || null,
+        review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
+      });
+      setBusiness((prev) => ({
+        ...(prev || {}),
+        logo_url: logoUrl || null,
+        review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
+      }));
+      setReviewPlatforms(normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS);
+      setAlertMessage('Branding and links saved successfully');
+      setAlertVariant('success');
+    } catch (err) {
+      console.error('Error saving business settings:', err);
+      setAlertMessage('Error saving branding or links');
+      setAlertVariant('error');
+    }
+  };
+
+  const handlePlatformChange = (index, field, value) => {
+    setReviewPlatforms((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleAddPlatform = () => {
+    setReviewPlatforms((prev) => [...prev, { name: '', url: '' }]);
+  };
+
+  const handleRemovePlatform = (index) => {
+    if (reviewPlatforms.length <= 1) return;
+    setReviewPlatforms((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Show loading spinner while checking auth
   if (checkingAuth) {
     return (
@@ -289,6 +427,18 @@ const BusinessAdmin = ({ businessId }) => {
       <Container maxWidth="lg" sx={{ py: 4, textAlign: 'center' }}>
         <CircularProgress />
         <Typography sx={{ mt: 2 }}>Loading...</Typography>
+      </Container>
+    );
+  }
+
+  if (templatesGenerating) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography sx={{ mt: 2, fontWeight: 600 }}>Generating your starter templates...</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>
+          This takes a few seconds. Your templates will appear automatically.
+        </Typography>
       </Container>
     );
   }
@@ -343,9 +493,102 @@ const BusinessAdmin = ({ businessId }) => {
         </Button>
       </Box>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={3} alignItems="stretch">
+        <Grid item xs={12} md={5}>
+          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+            <CardHeader
+              title="Branding & Review Links"
+              sx={{
+                background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
+                '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
+              }}
+            />
+            <CardContent>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                Upload your company logo to show it on the customer template page.
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                <Button component="label" variant="outlined" size="small">
+                  Upload Logo
+                  <input type="file" accept="image/*" hidden onChange={handleLogoFileUpload} />
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="error"
+                  onClick={() => setLogoUrl('')}
+                  disabled={!logoUrl}
+                >
+                  Remove Logo
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleSaveBusinessSettings}
+                >
+                  Save Settings
+                </Button>
+              </Box>
+              {logoUrl && (
+                <Box
+                  component="img"
+                  src={logoUrl}
+                  alt="Company logo preview"
+                  sx={{ maxHeight: 72, width: 'auto', borderRadius: 1, border: '1px solid rgba(148,163,184,0.35)', p: 0.5, bgcolor: '#fff' }}
+                />
+              )}
+
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mt: 3, mb: 1.5 }}>
+                Review Platforms
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                Add external review links customers can use after submitting feedback.
+              </Typography>
+              {reviewPlatforms.map((platform, index) => (
+                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.2, alignItems: 'center' }}>
+                  <TextField
+                    size="small"
+                    label="Name"
+                    value={platform.name}
+                    onChange={(e) => handlePlatformChange(index, 'name', e.target.value)}
+                    sx={{ width: '34%' }}
+                  />
+                  <TextField
+                    size="small"
+                    label="URL"
+                    value={platform.url}
+                    onChange={(e) => handlePlatformChange(index, 'url', e.target.value)}
+                    sx={{ flexGrow: 1 }}
+                    placeholder="https://..."
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => window.open(normalizeUrl(platform.url), '_blank')}
+                    disabled={!platform.url}
+                    title="Test Link"
+                  >
+                    <OpenInNewIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleRemovePlatform(index)}
+                    disabled={reviewPlatforms.length <= 1}
+                    title="Remove Platform"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+              <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={handleAddPlatform}>
+                Add Platform
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Active Templates */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={7}>
           <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
             <CardHeader
               title={
@@ -420,7 +663,7 @@ const BusinessAdmin = ({ businessId }) => {
         </Grid>
 
         {/* Backup Templates */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={5}>
           <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
             <CardHeader
               title={
@@ -498,10 +741,9 @@ const BusinessAdmin = ({ businessId }) => {
             </CardContent>
           </Card>
         </Grid>
-      </Grid>
 
-      <Box sx={{ mt: 3 }}>
-        <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+        <Grid item xs={12} md={7}>
+          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -580,7 +822,8 @@ const BusinessAdmin = ({ businessId }) => {
             </TableContainer>
           </CardContent>
         </Card>
-      </Box>
+        </Grid>
+      </Grid>
 
       {/* Create Template Dialog */}
       <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)} maxWidth="sm" fullWidth>

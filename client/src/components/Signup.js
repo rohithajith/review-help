@@ -161,6 +161,16 @@ export default function Signup() {
         const body = res && res.data ? res.data : null;
         
         if (body && body.businessId) {
+          // Carry onboarding generation state into the admin page so we can
+          // show an immediate loading indicator while starter templates appear.
+          try {
+            if (body.templatesGenerating) {
+              sessionStorage.setItem(`templatesGenerating:${body.businessId}`, '1');
+            } else {
+              sessionStorage.removeItem(`templatesGenerating:${body.businessId}`);
+            }
+          } catch (e) { /* ignore storage issues */ }
+
           // If paid plan, redirect to Stripe checkout
           if (selectedPlan && selectedPlan !== 'Starter' && selectedPlan !== 'Free') {
             try {

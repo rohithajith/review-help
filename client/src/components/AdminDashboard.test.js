@@ -38,29 +38,50 @@ describe('AdminDashboard', () => {
     expect(api.get).toHaveBeenCalledWith('/businesses');
   });
 
-  test('create business calls API and refreshes list', async () => {
+  test('save settings updates business with normalized review platform URLs', async () => {
     const businesses = [{ id: 1, name: 'A' }];
     api.get.mockImplementation((url) => {
       if (url === '/businesses') return Promise.resolve({ data: businesses });
-      if (url === '/1/business') return Promise.resolve({ data: { id: 1, name: 'A', google_review_url: '', welcome_message: '' } });
+      if (url === '/1/business') {
+        return Promise.resolve({
+          data: {
+            id: 1,
+            name: 'A',
+            logo_url: '',
+            google_review_url: '',
+            welcome_message: '',
+            review_platforms: [
+              { name: 'Google', url: '' },
+            ],
+          }
+        });
+      }
       if (url === '/1/templates') return Promise.resolve({ data: [] });
       if (url === '/1/templates/backups') return Promise.resolve({ data: [] });
+      if (url === '/1/reviews') return Promise.resolve({ data: [] });
       return Promise.resolve({ data: [] });
     });
-    api.post.mockResolvedValueOnce({ status: 201, data: { id: 42, name: 'New' } });
+    api.put.mockResolvedValueOnce({ status: 200, data: {} });
 
     render(<AdminDashboard />);
 
     // wait for initial load
     await waitFor(() => expect(api.get).toHaveBeenCalled());
 
-    const inputs = screen.getAllByRole('textbox');
-    // pick the first textbox which is the create business input in this layout
-    const input = inputs[0];
-    const createBtn = screen.getByText('Create');
-    fireEvent.change(input, { target: { value: 'New Tenant' } });
-    fireEvent.click(createBtn);
+    const reviewUrlInput = screen.getAllByLabelText('Review URL')[0];
+    fireEvent.change(reviewUrlInput, { target: { value: 'maps.google.com/place/x' } });
+    fireEvent.click(screen.getByText('Save Settings'));
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/businesses', { name: 'New Tenant' }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/1/business',
+      expect.objectContaining({
+        review_platforms: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'Google',
+            url: 'https://maps.google.com/place/x',
+          }),
+        ]),
+      })
+    ));
   });
 });
