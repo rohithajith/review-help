@@ -11,6 +11,35 @@ export default function Login({ onLoginSuccess }) {
   const [resetMessage, setResetMessage] = useState('');
   const [error, setError] = useState(null);
 
+  const routeAfterLogin = (businesses = [], defaultBusinessId = null) => {
+    const list = Array.isArray(businesses) ? businesses : [];
+    if (list.length === 0) return false;
+
+    if (list.length === 1) {
+      const onlyId = Number(list[0].id);
+      window.location.hash = `#/business/${onlyId}/admin`;
+      return true;
+    }
+
+    // Multi-business accounts go to consolidated admin; preserve preferred selection.
+    const settings = (() => {
+      try { return JSON.parse(localStorage.getItem('settings') || '{}') || {}; }
+      catch { return {}; }
+    })();
+    const storedId = Number(settings.businessId);
+    const selectedId = (
+      Number.isInteger(storedId) && list.some((b) => Number(b.id) === storedId)
+    )
+      ? storedId
+      : (Number(defaultBusinessId) || Number(list[0].id));
+    try {
+      localStorage.setItem('settings', JSON.stringify({ ...settings, businessId: selectedId }));
+    } catch (e) { /* ignore storage failures */ }
+
+    window.location.hash = '#/admin';
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -39,19 +68,34 @@ export default function Login({ onLoginSuccess }) {
       try { if (api && api.defaults) api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`; } catch (e) {}
 
       let redirected = false;
-      // Call onboarding endpoint to ensure user has a business and is mapped as owner
+
+      // Preferred flow: fetch user context (owned businesses) and route accordingly
       try {
-        const res = await api.post('/users/onboard');
+        const res = await api.get('/users/me');
         const body = res && res.data ? res.data : null;
-        if (body && body.businessId) {
-          redirected = true;
-          window.location.hash = `#/business/${body.businessId}/admin`;
-          return;
+        if (body && Array.isArray(body.businesses) && body.businesses.length > 0) {
+          redirected = routeAfterLogin(body.businesses, body.defaultBusinessId);
+          if (redirected) return;
         }
-        setError('Login succeeded but no business was returned. Please try again or contact support.');
       } catch (e) {
-        console.warn('Onboarding call failed', e);
-        setError('Unable to complete login. Please try again.');
+        console.warn('User context call failed, falling back to onboarding', e);
+      }
+
+      // Fallback for first-time users with no business yet.
+      if (!redirected) {
+        try {
+          const res = await api.post('/users/onboard');
+          const body = res && res.data ? res.data : null;
+          const routed = routeAfterLogin(body?.businesses || [], body?.defaultBusinessId || body?.businessId);
+          if (routed) {
+            redirected = true;
+            return;
+          }
+          setError('Login succeeded but no business was returned. Please try again or contact support.');
+        } catch (e) {
+          console.warn('Onboarding call failed', e);
+          setError('Unable to complete login. Please try again.');
+        }
       }
 
       if (!redirected && typeof onLoginSuccess === 'function') onLoginSuccess(session);

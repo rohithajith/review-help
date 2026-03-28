@@ -177,7 +177,7 @@ const AdminDashboard = () => {
     if (selectedBusinessId) {
       loadTenantData(selectedBusinessId);
     }
-  }, [selectedBusinessId, fetchTemplates, fetchReviews]);
+  }, [authReady, selectedBusinessId, fetchTemplates, fetchReviews]);
 
   // whenever selected business changes also load backups
   useEffect(() => {

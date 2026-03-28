@@ -34,6 +34,11 @@ function getPoolConfig(connectionString) {
     connectionString.includes('sslmode=verify-full')
   )) {
     config.ssl = { rejectUnauthorized: false };
+    // GCP VM currently has no usable IPv6 route to Supabase Postgres.
+    // Force IPv4 resolution for PG sockets to avoid ENETUNREACH.
+    config.lookup = (hostname, options, callback) => {
+      dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
+    };
   }
   
   return config;
@@ -199,6 +204,87 @@ async function ensureAdminSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_business_id ON business_owners(business_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_user_id ON business_owners(user_id)`);
+
+  // Remove orphaned rows before adding FK constraints (safe idempotent cleanup)
+  await pool.query(`
+    DELETE FROM business_owners bo
+    WHERE NOT EXISTS (SELECT 1 FROM businesses b WHERE b.id = bo.business_id)
+       OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = bo.user_id)
+  `);
+  await pool.query(`
+    DELETE FROM review_templates rt
+    WHERE rt.business_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM businesses b WHERE b.id = rt.business_id)
+  `);
+  await pool.query(`
+    DELETE FROM backup_templates bt
+    WHERE bt.business_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM businesses b WHERE b.id = bt.business_id)
+  `);
+  await pool.query(`
+    DELETE FROM archived_templates at
+    WHERE at.business_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM businesses b WHERE b.id = at.business_id)
+  `);
+  await pool.query(`
+    DELETE FROM customer_reviews cr
+    WHERE NOT EXISTS (SELECT 1 FROM businesses b WHERE b.id = cr.business_id)
+  `);
+  await pool.query(`
+    UPDATE customer_reviews cr
+    SET template_id = NULL
+    WHERE cr.template_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM review_templates rt WHERE rt.id = cr.template_id)
+  `);
+
+  // Strengthen tenant integrity constraints
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_business_owners_business') THEN
+        ALTER TABLE business_owners
+          ADD CONSTRAINT fk_business_owners_business
+          FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_business_owners_user') THEN
+        ALTER TABLE business_owners
+          ADD CONSTRAINT fk_business_owners_user
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_review_templates_business') THEN
+        ALTER TABLE review_templates
+          ADD CONSTRAINT fk_review_templates_business
+          FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_backup_templates_business') THEN
+        ALTER TABLE backup_templates
+          ADD CONSTRAINT fk_backup_templates_business
+          FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_archived_templates_business') THEN
+        ALTER TABLE archived_templates
+          ADD CONSTRAINT fk_archived_templates_business
+          FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_customer_reviews_business') THEN
+        ALTER TABLE customer_reviews
+          ADD CONSTRAINT fk_customer_reviews_business
+          FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_customer_reviews_template') THEN
+        ALTER TABLE customer_reviews
+          ADD CONSTRAINT fk_customer_reviews_template
+          FOREIGN KEY (template_id) REFERENCES review_templates(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+
+  // Query-shape indexes for auth/owner and template retrieval paths
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_business_owners_user_business ON business_owners(user_id, business_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_review_templates_business_used_created ON review_templates(business_id, used, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_customer_reviews_business_created ON customer_reviews(business_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_businesses_created_at ON businesses(created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users((LOWER(email)))`);
 
   console.info('tenantManager: schema ensured (businesses, review_templates, backup_templates, archived_templates, customer_reviews+consent)');
 }

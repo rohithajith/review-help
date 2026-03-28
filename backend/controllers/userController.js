@@ -1,6 +1,55 @@
 const { getAdminPool } = require('../tenantManager');
 const { generateOnboardingTemplates, BUSINESS_CATEGORIES } = require('../services/onboardingGenerationService');
 
+function parsePreferredBusinessId(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+async function listOwnedBusinesses(pool, userId) {
+  const { rows } = await pool.query(
+    `SELECT b.id, b.name, b.plan, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, bo.role
+     FROM business_owners bo
+     JOIN businesses b ON bo.business_id = b.id
+     WHERE bo.user_id = $1
+     ORDER BY b.id`,
+    [userId]
+  );
+  return rows;
+}
+
+exports.getMe = async (req, res, next) => {
+  try {
+    const pool = getAdminPool();
+    const user = req.user;
+    const userId = req.userId;
+    if (!user || !userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    await pool.query(
+      'INSERT INTO users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email',
+      [userId, user.email || null]
+    );
+
+    const businesses = await listOwnedBusinesses(pool, userId);
+    const preferredBusinessId = parsePreferredBusinessId(req.query && req.query.businessId);
+    const defaultBusinessId = (
+      preferredBusinessId && businesses.some((b) => Number(b.id) === preferredBusinessId)
+    )
+      ? preferredBusinessId
+      : (businesses[0] ? Number(businesses[0].id) : null);
+
+    res.json({
+      user: { id: userId, email: user.email || null },
+      businesses,
+      hasBusinesses: businesses.length > 0,
+      defaultBusinessId,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 exports.onboard = async (req, res, next) => {
   try {
     const pool = getAdminPool();
@@ -16,6 +65,7 @@ exports.onboard = async (req, res, next) => {
       business_type,    // 'business' or 'freelancer'
       business_category // e.g., 'Restaurant', 'Hairdresser'
     } = req.body || {};
+    const preferredBusinessId = parsePreferredBusinessId(req.body && req.body.businessId);
 
     // Upsert user into users table
     await pool.query(
@@ -23,19 +73,22 @@ exports.onboard = async (req, res, next) => {
       [userId, user.email || null]
     );
 
-    // If user already owns a business, return that first one
-    const { rows: existing } = await pool.query(
-      'SELECT b.id, b.name, b.plan FROM business_owners bo JOIN businesses b ON bo.business_id = b.id WHERE bo.user_id = $1 ORDER BY b.id LIMIT 1',
-      [userId]
-    );
-    if (existing && existing.length > 0) {
-      const biz = existing[0];
+    // If user already owns business(es), return an existing one instead of creating another.
+    const ownedBusinesses = await listOwnedBusinesses(pool, userId);
+    if (ownedBusinesses.length > 0) {
+      const selected = (
+        preferredBusinessId && ownedBusinesses.some((b) => Number(b.id) === preferredBusinessId)
+      )
+        ? ownedBusinesses.find((b) => Number(b.id) === preferredBusinessId)
+        : ownedBusinesses[0];
       return res.json({ 
-        businessId: biz.id, 
-        name: biz.name, 
-        plan: biz.plan,
-        adminUrl: `/#/business/${biz.id}/admin`, 
-        publicUrl: `/#/business/${biz.id}`,
+        businessId: selected.id, 
+        name: selected.name, 
+        plan: selected.plan,
+        businesses: ownedBusinesses,
+        defaultBusinessId: selected.id,
+        adminUrl: `/#/business/${selected.id}/admin`, 
+        publicUrl: `/#/business/${selected.id}`,
         existing: true
       });
     }
@@ -85,6 +138,13 @@ exports.onboard = async (req, res, next) => {
       businessId, 
       name: insert.rows[0].name, 
       plan: actualPlan,
+      businesses: [{
+        id: businessId,
+        name: insert.rows[0].name,
+        plan: actualPlan,
+        role: 'owner',
+      }],
+      defaultBusinessId: businessId,
       adminUrl: `/#/business/${businessId}/admin`, 
       publicUrl: `/#/business/${businessId}`,
       templatesGenerating: !!business_type && !!business_category

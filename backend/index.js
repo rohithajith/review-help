@@ -9,7 +9,6 @@ const userRoutes = require('./routes/userRoutes');
 const logsRoutes = require('./routes/logsRoutes');
 const consentRoutes = require('./routes/consentRoutes');
 const businessMiddleware = require('./middleware/businessMiddleware');
-const rateLimit = require('express-rate-limit');
 const { getAdminPool, ensureAdminSchema } = require('./tenantManager');
 const cronScheduler = require('./jobs/cronScheduler');
 const paymentsRoutes = require('./routes/paymentsRoutes');
@@ -61,19 +60,6 @@ app.use((req, res, next) => {
   });
   next();
 });
-
-// Basic rate limiting for APIs
-const rateLimitMax = process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : (process.env.NODE_ENV === 'production' ? 60 : 1000);
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: rateLimitMax,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-if (process.env.NODE_ENV === 'production' || process.env.RATE_LIMIT_MAX) {
-  app.use('/api', apiLimiter);
-}
 
 // Initialize DB/cron in non-test environments.
 if (process.env.NODE_ENV !== 'test') {

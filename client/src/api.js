@@ -11,15 +11,20 @@ const mode = String(metaEnv.MODE || nodeEnv.NODE_ENV || 'development').toLowerCa
 const isTestEnv = mode === 'test';
 const isProdEnv = metaEnv.PROD === true || mode === 'production';
 
-// Force API prefix for all requests in the client. This ensures the
-// dev-server proxy (`/api`) is used when REACT_APP_API_URL is not set.
-const envApiUrl = String(
-  metaEnv.REACT_APP_API_URL
-  || metaEnv.VITE_API_URL
-  || nodeEnv.REACT_APP_API_URL
-  || ''
-).trim();
-export const apiBase = envApiUrl || '/api';
+export function resolveApiBase(meta = {}, node = {}, isProd = false) {
+  const viteApiUrl = String(meta.VITE_API_URL || '').trim();
+  const reactApiUrl = String(meta.REACT_APP_API_URL || node.REACT_APP_API_URL || '').trim();
+
+  // Prefer Vite runtime API base. If a localhost URL leaks into production,
+  // force same-origin `/api` to avoid browser-local failures.
+  let envApiUrl = viteApiUrl || reactApiUrl || '';
+  if (isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(envApiUrl)) {
+    envApiUrl = '/api';
+  }
+  return envApiUrl || '/api';
+}
+
+export const apiBase = resolveApiBase(metaEnv, nodeEnv, isProdEnv);
 
 let api;
 const getSupabaseAccessToken = async () => {

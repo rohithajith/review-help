@@ -1,5 +1,4 @@
 const express = require('express');
-const rateLimit = require('express-rate-limit');
 const { body, param } = require('express-validator');
 const router = express.Router({ mergeParams: true });
 const templatesController = require('../controllers/templatesController');
@@ -22,14 +21,6 @@ const requireAdminApiKey = (req, res, next) => {
   }
   next();
 };
-const aiAssistLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 30 : 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many AI requests. Please try again shortly.' },
-});
-
 // Get all active templates
 router.get('/templates', asyncHandler(templatesController.getActiveTemplates));
 
@@ -50,7 +41,6 @@ router.get('/reviews', authMiddleware, ownerMiddleware, asyncHandler(templatesCo
 // Compose review from guided Q&A answers (public)
 router.post(
   '/reviews/compose',
-  aiAssistLimiter,
   [
     body('answers').isObject(),
     body('skippedKeys').optional().isArray(),
@@ -61,7 +51,6 @@ router.post(
 // Polish review text with AI (public)
 router.post(
   '/reviews/polish',
-  aiAssistLimiter,
   [
     body('reviewText').isString().trim().isLength({ min: 1, max: 2000 }),
   ],
