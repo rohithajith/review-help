@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getAdminPool } = require('../tenantManager');
 const authMiddleware = require('../middleware/authMiddleware');
+const { generateOnboardingTemplates } = require('../services/onboardingGenerationService');
 
 // Stripe instance (lazy-loaded)
 let stripe = null;
@@ -91,6 +92,54 @@ function toIsoOrNull(epochSeconds) {
   if (!epochSeconds || !Number.isFinite(Number(epochSeconds))) return null;
   const date = new Date(Number(epochSeconds) * 1000);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function hasAnyTemplates(pool, businessId) {
+  const { rows } = await pool.query(
+    `SELECT
+       COALESCE((SELECT COUNT(*) FROM review_templates WHERE business_id = $1), 0)::int AS active_count,
+       COALESCE((SELECT COUNT(*) FROM backup_templates WHERE business_id = $1), 0)::int AS backup_count`,
+    [businessId]
+  );
+  const row = rows[0] || {};
+  return Number(row.active_count || 0) > 0 || Number(row.backup_count || 0) > 0;
+}
+
+async function triggerOnboardingGenerationAfterPayment({
+  pool,
+  businessId,
+  businessType,
+  businessCategory,
+  businessName,
+  plan,
+}) {
+  if (!businessType || !businessCategory) {
+    console.info(`checkout.session.completed: skip template generation for business ${businessId} (missing business_type/category)`);
+    return;
+  }
+
+  if (await hasAnyTemplates(pool, businessId)) {
+    console.info(`checkout.session.completed: templates already exist for business ${businessId}, skipping generation`);
+    return;
+  }
+
+  const result = await generateOnboardingTemplates(
+    pool,
+    businessId,
+    String(businessType),
+    String(businessCategory),
+    businessName ? String(businessName) : null,
+    plan
+  );
+
+  if (!result || result.success !== true) {
+    console.warn(`checkout.session.completed: template generation failed for business ${businessId}`, result && result.error ? result.error : '');
+    return;
+  }
+
+  console.info(
+    `checkout.session.completed: generated templates for business ${businessId} (main=${result.mainCount}, backup=${result.backupCount}, source=${result.source})`
+  );
 }
 
 async function createCheckoutSessionForBusiness({
@@ -297,7 +346,8 @@ router.post('/webhook', async (req, res) => {
 });
 
 /**
- * Handle checkout.session.completed: update business plan and store Stripe IDs
+ * Handle checkout.session.completed: update business plan, store Stripe IDs,
+ * and trigger onboarding template generation once payment is confirmed.
  */
 async function handleCheckoutCompleted(session) {
   const stripeClient = getStripe();
@@ -322,12 +372,7 @@ async function handleCheckoutCompleted(session) {
     }
   }
 
-  const businessRes = await pool.query(
-    'SELECT pending_plan FROM businesses WHERE id = $1',
-    [normalizedBusinessId]
-  );
-  const pendingPlan = normalizePlan(businessRes?.rows?.[0]?.pending_plan);
-  const finalPlan = requestedPlan || pendingPlan || 'Starter';
+  let finalPlan = requestedPlan || 'Starter';
   let trialEndsAt = null;
   if (subscription) {
     try {
@@ -338,23 +383,73 @@ async function handleCheckoutCompleted(session) {
     }
   }
 
+  let shouldGenerateTemplates = false;
+  let businessType = null;
+  let businessCategory = null;
+  let businessName = null;
+
+  await pool.query('BEGIN');
+  try {
+    const businessRes = await pool.query(
+      `SELECT plan, pending_plan, billing_status, business_type, business_category, name
+       FROM businesses
+       WHERE id = $1
+       FOR UPDATE`,
+      [normalizedBusinessId]
+    );
+    if (!businessRes.rows.length) {
+      await pool.query('ROLLBACK');
+      console.warn(`checkout.session.completed: business ${normalizedBusinessId} does not exist`);
+      return;
+    }
+
+    const business = businessRes.rows[0];
+    const pendingPlan = normalizePlan(business.pending_plan);
+    finalPlan = requestedPlan || pendingPlan || normalizePlan(business.plan) || 'Starter';
+    const wasPendingBilling = String(business.billing_status || '').toLowerCase() !== BILLING_ACTIVE || Boolean(pendingPlan);
+
+    businessType = business.business_type || null;
+    businessCategory = business.business_category || null;
+    businessName = business.name || null;
+    shouldGenerateTemplates = wasPendingBilling;
+
+    await pool.query(
+      `UPDATE businesses
+       SET plan = $1,
+           stripe_customer_id = $2,
+           stripe_subscription_id = $3,
+           billing_required = $4,
+           billing_status = $5,
+           pending_plan = NULL,
+           trial_ends_at = $6
+       WHERE id = $7`,
+      [finalPlan, customer || null, subscription || null, true, BILLING_ACTIVE, trialEndsAt, normalizedBusinessId]
+    );
+
+    await pool.query('COMMIT');
+  } catch (err) {
+    try { await pool.query('ROLLBACK'); } catch (rollbackErr) { /* ignore */ }
+    throw err;
+  }
+
   console.log(`Checkout completed for business ${normalizedBusinessId}, plan=${finalPlan}, subscription=${subscription}`);
 
-  // Update business with plan and Stripe IDs
-  await pool.query(
-    `UPDATE businesses
-     SET plan = $1,
-         stripe_customer_id = $2,
-         stripe_subscription_id = $3,
-         billing_required = $4,
-         billing_status = $5,
-         pending_plan = NULL,
-         trial_ends_at = $6
-     WHERE id = $7`,
-    [finalPlan, customer || null, subscription || null, true, BILLING_ACTIVE, trialEndsAt, normalizedBusinessId]
-  );
+  if (!shouldGenerateTemplates) {
+    console.log(`checkout.session.completed: business ${normalizedBusinessId} already active; skipping onboarding template generation`);
+    return;
+  }
 
-  console.log(`Business ${normalizedBusinessId} upgraded to plan: ${finalPlan}`);
+  // Do not block Stripe webhook response on AI generation.
+  triggerOnboardingGenerationAfterPayment({
+    pool,
+    businessId: normalizedBusinessId,
+    businessType,
+    businessCategory,
+    businessName,
+    plan: finalPlan,
+  }).catch((err) => {
+    console.error(`checkout.session.completed: post-payment template generation failed for business ${normalizedBusinessId}:`, err.message);
+  });
 }
 
 /**

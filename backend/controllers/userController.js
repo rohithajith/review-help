@@ -1,5 +1,5 @@
 const { getAdminPool } = require('../tenantManager');
-const { generateOnboardingTemplates, BUSINESS_CATEGORIES } = require('../services/onboardingGenerationService');
+const { BUSINESS_CATEGORIES } = require('../services/onboardingGenerationService');
 const VALID_SIGNUP_PLANS = new Set(['Starter', 'Pro', 'Pro Max']);
 
 function parsePreferredBusinessId(raw) {
@@ -141,18 +141,7 @@ exports.onboard = async (req, res, next) => {
     // Map user as owner
     await pool.query('INSERT INTO business_owners (business_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (business_id, user_id) DO NOTHING', [businessId, userId, 'owner']);
 
-    // Generate AI templates if business type and category are provided
-    let templateGeneration = null;
-    if (business_type && business_category) {
-      // Run template generation asynchronously (don't block the response)
-      templateGeneration = generateOnboardingTemplates(pool, businessId, business_type, business_category, name, actualPlan)
-        .catch(err => {
-          console.error('onboard: template generation failed:', err.message);
-          return { success: false, error: err.message };
-        });
-    }
-
-    // Return immediately, templates will be generated in background
+    // Return immediately. Template generation happens only after successful payment webhook.
     res.status(201).json({ 
       businessId, 
       name: insert.rows[0].name, 
@@ -174,14 +163,8 @@ exports.onboard = async (req, res, next) => {
       defaultBusinessId: businessId,
       adminUrl: `/#/business/${businessId}/admin`, 
       publicUrl: `/#/business/${businessId}`,
-      templatesGenerating: !!business_type && !!business_category
+      templatesGenerating: false
     });
-
-    // Wait for template generation to complete (non-blocking to response)
-    if (templateGeneration) {
-      const result = await templateGeneration;
-      console.info(`onboard: template generation completed for business ${businessId}:`, result);
-    }
   } catch (err) {
     next(err);
   }
