@@ -9,6 +9,7 @@ import Signup from './components/Signup';
 import SignupSuccess from './components/SignupSuccess';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/Navbar';
+import supabase from './lib/supabaseClient';
 import useTemplates from './hooks/useTemplates';
 import useScrollGradient from './hooks/useScrollGradient';
 import Footer from './components/Footer';
@@ -967,13 +968,49 @@ function BusinessAdminPage() {
   return <BusinessAdmin businessId={businessId} />;
 }
 
-// =============================================================================
-// Main App Router
-// =============================================================================
-export default function App() {
+function AppLayout() {
+  const location = useLocation();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (active) setIsLoggedIn(Boolean(data?.session));
+      } catch (e) {
+        if (active) setIsLoggedIn(false);
+      }
+    };
+
+    loadSession();
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(Boolean(session));
+    });
+
+    return () => {
+      active = false;
+      data?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  const pathname = location?.pathname || '/';
+  const navAllowedPublicPaths = new Set([
+    '/',
+    '/pricing',
+    '/contact',
+    '/signup',
+    '/signup-success',
+    '/login',
+    '/reset-password',
+  ]);
+  const showNavBar = !isLoggedIn && navAllowedPublicPaths.has(pathname);
+
   return (
-    <Router>
-      <NavBar />
+    <>
+      {showNavBar && <NavBar />}
       <Routes>
         {/* Public pages */}
         <Route path="/" element={<Landing />} />
@@ -999,6 +1036,17 @@ export default function App() {
         {/* Catch-all: redirect unknown hashes to landing */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+    </>
+  );
+}
+
+// =============================================================================
+// Main App Router
+// =============================================================================
+export default function App() {
+  return (
+    <Router>
+      <AppLayout />
     </Router>
   );
 }

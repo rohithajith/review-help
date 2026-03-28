@@ -478,6 +478,16 @@ const BusinessAdmin = ({ businessId }) => {
         >
           Back to Templates
         </Button>
+        <Button
+          variant="contained"
+          startIcon={<OpenInNewIcon />}
+          onClick={() => {
+            const templateUrl = `${window.location.origin}${window.location.pathname}#/business/${businessId}`;
+            window.open(templateUrl, '_blank', 'noopener,noreferrer');
+          }}
+        >
+          Template page
+        </Button>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 600, flex: 1 }}>
           {business.name} - Admin
         </Typography>
