@@ -451,8 +451,41 @@ const BusinessAdmin = ({ businessId }) => {
     );
   }
 
+  const cardSx = {
+    borderRadius: 2,
+    border: '1px solid #d7deea',
+    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.05)',
+    backgroundColor: '#ffffff',
+  };
+
+  const cardHeaderSx = {
+    backgroundColor: '#f6f8fb',
+    borderBottom: '1px solid #e5eaf2',
+    '& .MuiCardHeader-title': {
+      fontWeight: 700,
+      color: '#1f2a44',
+      fontSize: '1.05rem',
+      letterSpacing: '-0.01em',
+    },
+  };
+
+  const tableShellSx = {
+    maxHeight: '50vh',
+    border: '1px solid #e2e8f0',
+    boxShadow: 'none',
+    borderRadius: 1.5,
+  };
+
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
+    <Container
+      maxWidth="xl"
+      sx={{
+        py: 3,
+        fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+        backgroundColor: '#f2f4f8',
+        minHeight: '100vh',
+      }}
+    >
       {/* Alert Snackbar */}
       <Snackbar
         open={!!alertMessage}
@@ -470,11 +503,24 @@ const BusinessAdmin = ({ businessId }) => {
       </Snackbar>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 1.5,
+          mb: 3,
+          p: 2,
+          borderRadius: 2,
+          border: '1px solid #d7deea',
+          backgroundColor: '#ffffff',
+        }}
+      >
         <Button
           variant="outlined"
           startIcon={<ArrowBackIcon />}
           onClick={() => window.location.hash = `#/business/${businessId}`}
+          sx={{ borderRadius: 1 }}
         >
           Back to Templates
         </Button>
@@ -485,33 +531,42 @@ const BusinessAdmin = ({ businessId }) => {
             const templateUrl = `${window.location.origin}${window.location.pathname}#/business/${businessId}`;
             window.open(templateUrl, '_blank', 'noopener,noreferrer');
           }}
+          sx={{ borderRadius: 1, textTransform: 'none' }}
         >
           Template page
         </Button>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 600, flex: 1 }}>
+        <Typography
+          variant="h4"
+          component="h1"
+          sx={{
+            fontWeight: 700,
+            flex: 1,
+            color: '#1f2937',
+            fontSize: { xs: '1.6rem', md: '2.05rem' },
+            lineHeight: 1.1,
+          }}
+        >
           {business.name} - Admin
         </Typography>
-        <Chip label="Business Admin" color="primary" />
+        <Chip label="Business Admin" color="primary" sx={{ borderRadius: 1 }} />
         <Button
           variant="outlined"
           color="error"
           startIcon={<LogoutIcon />}
           onClick={handleLogout}
           size="small"
+          sx={{ borderRadius: 1 }}
         >
           Logout
         </Button>
       </Box>
 
-      <Grid container spacing={3} alignItems="stretch">
-        <Grid item xs={12} md={5}>
-          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+      <Grid container spacing={2.5} alignItems="stretch">
+        <Grid item xs={12} md={4}>
+          <Card sx={cardSx}>
             <CardHeader
               title="Branding & Review Links"
-              sx={{
-                background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
-                '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
-              }}
+              sx={cardHeaderSx}
             />
             <CardContent>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
@@ -535,6 +590,7 @@ const BusinessAdmin = ({ businessId }) => {
                   variant="contained"
                   size="small"
                   onClick={handleSaveBusinessSettings}
+                  startIcon={<SaveIcon />}
                 >
                   Save Settings
                 </Button>
@@ -598,8 +654,8 @@ const BusinessAdmin = ({ businessId }) => {
         </Grid>
 
         {/* Active Templates */}
-        <Grid item xs={12} md={7}>
-          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+        <Grid item xs={12} md={8}>
+          <Card sx={cardSx}>
             <CardHeader
               title={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -607,10 +663,7 @@ const BusinessAdmin = ({ businessId }) => {
                   <Chip label={templates.length} size="small" color="success" />
                 </Box>
               }
-              sx={{
-                background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
-                '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
-              }}
+              sx={cardHeaderSx}
             />
             <CardContent>
               <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
@@ -623,7 +676,7 @@ const BusinessAdmin = ({ businessId }) => {
                 </Button>
               </Box>
 
-              <TableContainer component={Paper} sx={{ maxHeight: '50vh' }}>
+              <TableContainer component={Paper} sx={tableShellSx}>
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
@@ -673,8 +726,8 @@ const BusinessAdmin = ({ businessId }) => {
         </Grid>
 
         {/* Backup Templates */}
-        <Grid item xs={12} md={5}>
-          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+        <Grid item xs={12} md={4}>
+          <Card sx={cardSx}>
             <CardHeader
               title={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -682,10 +735,7 @@ const BusinessAdmin = ({ businessId }) => {
                   <Chip label={backupTemplates.length} size="small" color="warning" />
                 </Box>
               }
-              sx={{
-                background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
-                '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
-              }}
+              sx={cardHeaderSx}
             />
             <CardContent>
               <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
@@ -703,7 +753,7 @@ const BusinessAdmin = ({ businessId }) => {
                 Backup templates are used to replace active templates when customers use them for reviews.
               </Typography>
 
-              <TableContainer component={Paper} sx={{ maxHeight: '50vh' }}>
+              <TableContainer component={Paper} sx={tableShellSx}>
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
@@ -752,8 +802,8 @@ const BusinessAdmin = ({ businessId }) => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={7}>
-          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+        <Grid item xs={12} md={8}>
+          <Card sx={cardSx}>
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -761,13 +811,10 @@ const BusinessAdmin = ({ businessId }) => {
                 <Chip label={reviews.length} size="small" color="primary" />
               </Box>
             }
-            sx={{
-              background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
-              '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
-            }}
+            sx={cardHeaderSx}
           />
           <CardContent>
-            <TableContainer component={Paper} sx={{ maxHeight: '50vh' }}>
+            <TableContainer component={Paper} sx={tableShellSx}>
               <Table stickyHeader size="small">
 	                <TableHead>
 	                  <TableRow>
