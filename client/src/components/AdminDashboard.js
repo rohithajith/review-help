@@ -47,6 +47,22 @@ const DEFAULT_REVIEW_PLATFORMS = [
   { name: 'Booking.com', url: '' },
 ];
 
+async function waitForSession(maxAttempts = 6, delayMs = 200) {
+  for (let i = 0; i < maxAttempts; i += 1) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
+      if (token) return token;
+    } catch (e) {
+      // ignore transient auth read failures
+    }
+    if (i < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
 function normalizeUrl(raw) {
   const v = String(raw || '').trim();
   if (!v) return '';
@@ -156,8 +172,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const token = data?.session?.access_token || null;
+        const token = await waitForSession();
         if (!token) {
           window.location.hash = '#/login';
           setAuthReady(true);
