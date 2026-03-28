@@ -38,6 +38,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
 import api from '../api';
+import supabase from '../lib/supabaseClient';
 import LogsViewer from './LogsViewer';
 
 // Default review platforms
@@ -54,6 +55,7 @@ function normalizeUrl(raw) {
 }
 
 const AdminDashboard = () => {
+  const [authReady, setAuthReady] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [backupTemplates, setBackupTemplates] = useState([]);
   const [businesses, setBusinesses] = useState([]);
@@ -152,8 +154,29 @@ const AdminDashboard = () => {
   }, [fetchTemplates]);
 
   useEffect(() => {
-    loadBusinesses();
-    loadSettings();
+    const init = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token || null;
+        if (!token) {
+          window.location.hash = '#/login';
+          setAuthReady(true);
+          return;
+        }
+        if (api && api.defaults) {
+          api.defaults.headers.common = api.defaults.headers.common || {};
+          api.defaults.headers.common.Authorization = `Bearer ${token}`;
+        }
+        await loadBusinesses();
+        loadSettings();
+      } catch (err) {
+        console.error('Admin auth initialization failed', err);
+        window.location.hash = '#/login';
+      } finally {
+        setAuthReady(true);
+      }
+    };
+    init();
   }, [loadBusinesses, loadSettings]);
 
   // Whenever selected business changes, load templates and branding
@@ -174,15 +197,15 @@ const AdminDashboard = () => {
       }
     };
 
-    if (selectedBusinessId) {
+    if (authReady && selectedBusinessId) {
       loadTenantData(selectedBusinessId);
     }
   }, [authReady, selectedBusinessId, fetchTemplates, fetchReviews]);
 
   // whenever selected business changes also load backups
   useEffect(() => {
-    if (selectedBusinessId) fetchBackups(selectedBusinessId);
-  }, [selectedBusinessId, fetchBackups]);
+    if (authReady && selectedBusinessId) fetchBackups(selectedBusinessId);
+  }, [authReady, selectedBusinessId, fetchBackups]);
 
   const saveSettings = async () => {
     try {

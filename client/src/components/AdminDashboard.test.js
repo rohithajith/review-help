@@ -11,6 +11,17 @@ vi.mock('../api', () => ({
     delete: vi.fn(),
   }
 }));
+vi.mock('../lib/supabaseClient', () => ({
+  __esModule: true,
+  default: {
+    auth: {
+      getSession: vi.fn(async () => ({
+        data: { session: { access_token: 'test-token' } },
+        error: null,
+      })),
+    },
+  },
+}));
 
 import AdminDashboard from './AdminDashboard';
 import api from '../api';
