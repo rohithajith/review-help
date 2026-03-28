@@ -41,6 +41,7 @@ const BUSINESS_CATEGORIES = {
     'Other Freelancer'
   ]
 };
+const VALID_SIGNUP_PLANS = new Set(['Starter', 'Pro', 'Pro Max']);
 
 export default function Signup() {
   const [activeStep, setActiveStep] = useState(0);
@@ -58,7 +59,11 @@ export default function Signup() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search || window.location.hash.split('?')[1] || '');
     const plan = params.get('plan');
-    if (plan) setSelectedPlan(plan);
+    if (plan && VALID_SIGNUP_PLANS.has(plan)) {
+      setSelectedPlan(plan);
+    } else if (plan) {
+      setSelectedPlan('Starter');
+    }
     if (params.get('canceled') === 'true') {
       setError('Checkout was canceled. You can try again or choose a different plan.');
     }
@@ -142,12 +147,14 @@ export default function Signup() {
 
       try {
         const headers = { 'Authorization': `Bearer ${accessToken}` };
+        const normalizedPlan = VALID_SIGNUP_PLANS.has(selectedPlan) ? selectedPlan : 'Starter';
         // Use custom description as category if "Other" was selected
         const finalCategory = isOtherCategory ? customDescription.trim() : businessCategory;
         const onboardData = {
           business_name: businessName || undefined,
           business_type: businessType,
           business_category: finalCategory,
+          selected_plan: normalizedPlan,
         };
         
         const res = await (api.defaults 
@@ -171,25 +178,32 @@ export default function Signup() {
             }
           } catch (e) { /* ignore storage issues */ }
 
-          // If paid plan, redirect to Stripe checkout
-          if (selectedPlan && selectedPlan !== 'Starter' && selectedPlan !== 'Free') {
-            try {
-              const checkout = await api.post('/payments/create-checkout-session', {
-                plan: selectedPlan,
-                email: String(email).trim(),
-                businessId: body.businessId,
-              }, { headers });
-              if (checkout?.data?.url) {
-                window.location.href = checkout.data.url;
-                return;
-              }
-            } catch (e) {
-              console.warn('Failed to create checkout session', e);
-            }
+          const billingRequired = body.billingRequired !== false;
+          const billingStatus = String(body.billingStatus || 'pending').toLowerCase();
+          const pendingPlan = body.pendingPlan || normalizedPlan;
+
+          // Existing/grandfathered accounts may already be active.
+          if (!billingRequired || billingStatus === 'active') {
+            window.location.hash = `#/business/${body.businessId}/admin`;
+            return;
           }
 
-          // Redirect to admin dashboard
-          window.location.hash = `#/business/${body.businessId}/admin`;
+          // New signups must complete checkout before dashboard access.
+          try {
+            const checkout = await api.post('/payments/create-checkout-session', {
+              plan: pendingPlan,
+              email: String(email).trim(),
+              businessId: body.businessId,
+            }, { headers });
+            if (checkout?.data?.url) {
+              window.location.href = checkout.data.url;
+              return;
+            }
+          } catch (e) {
+            console.warn('Failed to create checkout session', e);
+          }
+
+          window.location.hash = `#/payment-pending?businessId=${body.businessId}`;
           return;
         }
         setError('Account created but no business was returned. Please refresh and try again.');
@@ -347,7 +361,7 @@ export default function Signup() {
     <Box sx={{ maxWidth: 520, mx: 'auto', mt: 4, p: 3 }}>
       <Typography variant="h5" sx={{ mb: 1 }}>Create an account</Typography>
       
-      {selectedPlan && selectedPlan !== 'Starter' && (
+      {selectedPlan && (
         <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
           <Typography variant="body2" color="text.secondary">Selected plan:</Typography>
           <Chip label={selectedPlan} color="primary" size="small" />
@@ -390,7 +404,7 @@ export default function Signup() {
               disabled={loading || !canSubmit}
               startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
             >
-              {loading ? 'Creating...' : (selectedPlan !== 'Starter' && selectedPlan !== 'Free' ? 'Create & Continue to Payment' : 'Create Account')}
+              {loading ? 'Creating...' : 'Create & Continue to Payment'}
             </Button>
           )}
         </Box>

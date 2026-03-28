@@ -5,6 +5,7 @@ const templatesController = require('../controllers/templatesController');
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
+const billingMiddleware = require('../middleware/billingMiddleware');
 const { requirePlan } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 
@@ -21,6 +22,7 @@ const requireAdminApiKey = (req, res, next) => {
   }
   next();
 };
+const ownerWithBilling = [authMiddleware, ownerMiddleware, billingMiddleware];
 // Get all active templates
 router.get('/templates', asyncHandler(templatesController.getActiveTemplates));
 
@@ -36,7 +38,7 @@ router.post(
 );
 
 // Get all in-app reviews for My Reviews (owner-only)
-router.get('/reviews', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getMyReviews));
+router.get('/reviews', ...ownerWithBilling, asyncHandler(templatesController.getMyReviews));
 
 // Compose review from guided Q&A answers (public)
 router.post(
@@ -60,8 +62,7 @@ router.post(
 // Revoke consent for a specific review (admin feature)
 router.post(
   '/reviews/:id/consent/revoke',
-  authMiddleware,
-  ownerMiddleware,
+  ...ownerWithBilling,
   [param('id').isInt({ gt: 0 })],
   asyncHandler(templatesController.revokeReviewConsent)
 );
@@ -70,10 +71,10 @@ router.post(
 router.get('/business', asyncHandler(businessController.getBusiness));
 
 // Update business details for the current tenant (owner only)
-router.put('/business', authMiddleware, ownerMiddleware, asyncHandler(businessController.updateBusiness));
+router.put('/business', ...ownerWithBilling, asyncHandler(businessController.updateBusiness));
 
 // Verify that current authenticated user can access this business admin
-router.get('/admin/access', authMiddleware, ownerMiddleware, asyncHandler(async (req, res) => {
+router.get('/admin/access', ...ownerWithBilling, asyncHandler(async (req, res) => {
   res.json({ ok: true, role: req.userRole || 'owner' });
 }));
 
@@ -88,28 +89,28 @@ router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], asyncHandler(t
 router.post('/owners/dummy', requireAdminApiKey, asyncHandler(businessController.createDummyOwner));
 
 // Get all used templates (admin feature)
-router.get('/templates/used', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getUsedTemplates));
+router.get('/templates/used', ...ownerWithBilling, asyncHandler(templatesController.getUsedTemplates));
 
 // Rephrase and return a used template to the active pool (admin feature)
-router.post('/templates/:id/rephrase', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.rephraseTemplate));
+router.post('/templates/:id/rephrase', ...ownerWithBilling, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.rephraseTemplate));
 
 // Create a new template (admin feature)
-router.post('/templates', authMiddleware, ownerMiddleware, [body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.createTemplate));
+router.post('/templates', ...ownerWithBilling, [body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.createTemplate));
 
 // Bulk delete templates (admin feature) - MUST come before /templates/:id
-router.delete('/templates/bulk', authMiddleware, ownerMiddleware, [body('ids').isArray({ min: 1 })], asyncHandler(templatesController.bulkDeleteTemplates));
+router.delete('/templates/bulk', ...ownerWithBilling, [body('ids').isArray({ min: 1 })], asyncHandler(templatesController.bulkDeleteTemplates));
 
 // Update an existing template (admin feature)
-router.put('/templates/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.updateTemplate));
+router.put('/templates/:id', ...ownerWithBilling, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.updateTemplate));
 
 // Delete a template (admin feature)
-router.delete('/templates/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.deleteTemplate));
+router.delete('/templates/:id', ...ownerWithBilling, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.deleteTemplate));
 
 // Backup templates routes (admin features)
-router.get('/templates/backups', authMiddleware, ownerMiddleware, asyncHandler(templatesController.getBackupTemplates));
-router.post('/templates/backups', authMiddleware, ownerMiddleware, [body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.createBackupTemplate));
-router.put('/templates/backups/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.updateBackupTemplate));
-router.delete('/templates/backups/:id', authMiddleware, ownerMiddleware, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.deleteBackupTemplate));
+router.get('/templates/backups', ...ownerWithBilling, asyncHandler(templatesController.getBackupTemplates));
+router.post('/templates/backups', ...ownerWithBilling, [body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.createBackupTemplate));
+router.put('/templates/backups/:id', ...ownerWithBilling, [param('id').isInt({ gt: 0 }), body('text').isString().trim().isLength({ min: 1 })], asyncHandler(templatesController.updateBackupTemplate));
+router.delete('/templates/backups/:id', ...ownerWithBilling, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.deleteBackupTemplate));
 
 // =============================================================================
 // AI Template Generation Routes (Background Job Triggers)
@@ -117,7 +118,7 @@ router.delete('/templates/backups/:id', authMiddleware, ownerMiddleware, [param(
 // =============================================================================
 
 // Get generation status for this business
-router.get('/templates/generation/status', authMiddleware, ownerMiddleware, asyncHandler(async (req, res) => {
+router.get('/templates/generation/status', ...ownerWithBilling, asyncHandler(async (req, res) => {
   const result = await templateGenerationJob.getGenerationStatus();
   if (!result.success) {
     return res.status(500).json({ error: result.error });
@@ -128,7 +129,7 @@ router.get('/templates/generation/status', authMiddleware, ownerMiddleware, asyn
 }));
 
 // Manually trigger generation for this business (requires Pro+ plan)
-router.post('/templates/generation/trigger', authMiddleware, ownerMiddleware, requirePlan(['Pro', 'Pro Max', 'Enterprise']), asyncHandler(async (req, res) => {
+router.post('/templates/generation/trigger', ...ownerWithBilling, requirePlan(['Pro', 'Pro Max', 'Enterprise']), asyncHandler(async (req, res) => {
   const businessId = parseInt(req.businessId, 10);
   
   // Run in background, don't block the response

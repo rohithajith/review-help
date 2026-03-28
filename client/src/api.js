@@ -57,6 +57,31 @@ if (axiosClient && typeof axiosClient.create === 'function') {
     });
   }
 
+  // Global billing guard: redirect unpaid users to payment-pending flow.
+  if (api.interceptors && api.interceptors.response) {
+    api.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        try {
+          const status = err?.response?.status;
+          if (status === 402 && typeof window !== 'undefined') {
+            const data = err?.response?.data || {};
+            const businessId = data?.businessId;
+            const nextHash = businessId
+              ? `#/payment-pending?businessId=${encodeURIComponent(String(businessId))}`
+              : '#/payment-pending';
+            if (window.location.hash !== nextHash) {
+              window.location.hash = nextHash;
+            }
+          }
+        } catch (redirectErr) {
+          console.error('Billing redirect handler failed', redirectErr);
+        }
+        return Promise.reject(err);
+      }
+    );
+  }
+
   // Helpful logging for failed requests to aid debugging in development.
   if (!isProdEnv && api.interceptors && api.interceptors.response) {
     api.interceptors.response.use(

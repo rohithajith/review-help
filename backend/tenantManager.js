@@ -90,6 +90,10 @@ async function ensureAdminSchema() {
       plan TEXT DEFAULT 'Starter',
       stripe_customer_id TEXT,
       stripe_subscription_id TEXT,
+      billing_required BOOLEAN NOT NULL DEFAULT false,
+      billing_status TEXT NOT NULL DEFAULT 'active',
+      pending_plan TEXT,
+      trial_ends_at TIMESTAMP,
       business_type TEXT,
       business_category TEXT,
       created_at TIMESTAMP DEFAULT NOW()
@@ -118,6 +122,18 @@ async function ensureAdminSchema() {
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'stripe_subscription_id') THEN
         ALTER TABLE businesses ADD COLUMN stripe_subscription_id TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'billing_required') THEN
+        ALTER TABLE businesses ADD COLUMN billing_required BOOLEAN NOT NULL DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'billing_status') THEN
+        ALTER TABLE businesses ADD COLUMN billing_status TEXT NOT NULL DEFAULT 'active';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'pending_plan') THEN
+        ALTER TABLE businesses ADD COLUMN pending_plan TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'trial_ends_at') THEN
+        ALTER TABLE businesses ADD COLUMN trial_ends_at TIMESTAMP;
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'business_type') THEN
         ALTER TABLE businesses ADD COLUMN business_type TEXT;

@@ -6,6 +6,8 @@ export default function SignupSuccess() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionData, setSessionData] = useState(null);
+  const [pendingBusinessId, setPendingBusinessId] = useState(null);
+  const [canRetryVerification, setCanRetryVerification] = useState(false);
 
   useEffect(() => {
     const verifySession = async () => {
@@ -24,12 +26,19 @@ export default function SignupSuccess() {
         const res = await api.get(`/payments/verify-session/${sessionId}`);
         const data = res?.data;
 
-        if (data && data.status === 'paid') {
+        const sessionPaid = data && (data.status === 'paid' || data.status === 'no_payment_required');
+        const billingActive = String(data?.billingStatus || '').toLowerCase() === 'active';
+
+        if (billingActive) {
           setSessionData(data);
-        } else if (data && data.status === 'unpaid') {
-          setError('Payment is still processing. Please wait a moment and refresh.');
         } else {
-          setError('Could not verify payment status.');
+          setPendingBusinessId(data?.businessId || null);
+          setCanRetryVerification(sessionPaid);
+          setError(
+            sessionPaid
+              ? 'Payment was received and is being finalized. Please continue.'
+              : 'Payment is not complete yet. Please finish checkout to continue.'
+          );
         }
       } catch (err) {
         console.error('Verify session error:', err);
@@ -55,9 +64,25 @@ export default function SignupSuccess() {
     return (
       <Box sx={{ maxWidth: 500, mx: 'auto', mt: 6, p: 3 }}>
         <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
-        <Button variant="outlined" onClick={() => window.location.reload()}>
-          Retry
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          {canRetryVerification && (
+            <Button variant="outlined" onClick={() => window.location.reload()}>
+              Retry Verification
+            </Button>
+          )}
+          {pendingBusinessId ? (
+            <Button
+              variant="contained"
+              onClick={() => { window.location.hash = `#/payment-pending?businessId=${pendingBusinessId}`; }}
+            >
+              Continue
+            </Button>
+          ) : (
+            <Button variant="outlined" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          )}
+        </Box>
       </Box>
     );
   }

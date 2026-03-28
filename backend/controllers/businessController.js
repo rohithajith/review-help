@@ -57,7 +57,8 @@ exports.listBusinesses = async (req, res, next) => {
     }
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      `SELECT b.id, b.name, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, b.plan, b.created_at
+      `SELECT b.id, b.name, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, b.plan,
+              b.billing_required, b.billing_status, b.pending_plan, b.trial_ends_at, b.created_at
        FROM businesses b
        JOIN business_owners bo ON bo.business_id = b.id
        WHERE bo.user_id = $1
@@ -191,7 +192,9 @@ exports.getPlan = async (req, res, next) => {
   try {
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      'SELECT plan, stripe_customer_id, stripe_subscription_id FROM businesses WHERE id = $1',
+      `SELECT plan, stripe_customer_id, stripe_subscription_id,
+              billing_required, billing_status, pending_plan, trial_ends_at
+       FROM businesses WHERE id = $1`,
       [businessId]
     );
 
@@ -199,7 +202,15 @@ exports.getPlan = async (req, res, next) => {
       return res.status(404).json({ error: 'Business not found' });
     }
 
-    const { plan, stripe_customer_id, stripe_subscription_id } = rows[0];
+    const {
+      plan,
+      stripe_customer_id,
+      stripe_subscription_id,
+      billing_required,
+      billing_status,
+      pending_plan,
+      trial_ends_at,
+    } = rows[0];
     const { getPlanLimits } = require('../middleware/planMiddleware');
 
     res.json({
@@ -207,6 +218,10 @@ exports.getPlan = async (req, res, next) => {
       limits: getPlanLimits(plan || 'Starter'),
       stripeCustomerId: stripe_customer_id || null,
       stripeSubscriptionId: stripe_subscription_id || null,
+      billingRequired: Boolean(billing_required),
+      billingStatus: String(billing_status || 'active'),
+      pendingPlan: pending_plan || null,
+      trialEndsAt: trial_ends_at || null,
     });
   } catch (err) {
     next(err);

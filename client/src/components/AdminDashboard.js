@@ -92,6 +92,16 @@ const AdminDashboard = () => {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
+  const handleBillingRequired = useCallback((err, fallbackBusinessId = null) => {
+    if (err?.response?.status !== 402) return false;
+    const pendingBusinessId = err?.response?.data?.businessId || fallbackBusinessId || selectedBusinessId;
+    if (pendingBusinessId) {
+      window.location.hash = `#/payment-pending?businessId=${pendingBusinessId}`;
+    } else {
+      window.location.hash = '#/payment-pending';
+    }
+    return true;
+  }, [selectedBusinessId]);
 
   const fetchTemplates = useCallback(async (bizId = selectedBusinessId) => {
     try {
@@ -161,13 +171,15 @@ const AdminDashboard = () => {
           setLogoUrl(biz.logo_url || '');
           setWelcomeMessage(biz.welcome_message || '');
         } catch (err) {
+          if (handleBillingRequired(err, firstId)) return;
           console.error('Error loading auto-selected business details', err);
         }
       }
     } catch (err) {
+      if (handleBillingRequired(err)) return;
       console.error('Error loading businesses', err);
     }
-  }, [fetchTemplates]);
+  }, [fetchTemplates, handleBillingRequired]);
 
   useEffect(() => {
     const init = async () => {
@@ -186,13 +198,14 @@ const AdminDashboard = () => {
         loadSettings();
       } catch (err) {
         console.error('Admin auth initialization failed', err);
+        if (handleBillingRequired(err)) return;
         window.location.hash = '#/login';
       } finally {
         setAuthReady(true);
       }
     };
     init();
-  }, [loadBusinesses, loadSettings]);
+  }, [loadBusinesses, loadSettings, handleBillingRequired]);
 
   // Whenever selected business changes, load templates and branding
   useEffect(() => {
@@ -208,6 +221,7 @@ const AdminDashboard = () => {
         fetchTemplates(bizId);
         fetchReviews(bizId);
       } catch (err) {
+        if (handleBillingRequired(err, bizId)) return;
         console.error('Error loading business details', err);
       }
     };

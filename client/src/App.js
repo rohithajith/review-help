@@ -7,6 +7,7 @@ import Pricing from './components/Pricing';
 import Contact from './components/Contact';
 import Signup from './components/Signup';
 import SignupSuccess from './components/SignupSuccess';
+import PaymentPending from './components/PaymentPending';
 import ResetPassword from './components/ResetPassword';
 import NavBar from './components/Navbar';
 import supabase from './lib/supabaseClient';
@@ -1003,6 +1004,7 @@ function AppLayout() {
     '/contact',
     '/signup',
     '/signup-success',
+    '/payment-pending',
     '/login',
     '/reset-password',
   ]);
@@ -1018,6 +1020,7 @@ function AppLayout() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/signup-success" element={<SignupSuccess />} />
+        <Route path="/payment-pending" element={<PaymentPending />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/reviews/revoke-consent" element={<RevokeConsentPage />} />
         {/* Business-specific template page - give this URL to customers */}

@@ -118,7 +118,11 @@ const BusinessAdmin = ({ businessId }) => {
         setAccessError('');
       } catch (err) {
         console.error('Error checking owner access:', err);
-        if (err?.response?.status === 401) {
+        if (err?.response?.status === 402) {
+          const pendingBusinessId = err?.response?.data?.businessId || businessId;
+          window.location.hash = `#/payment-pending?businessId=${pendingBusinessId}`;
+          return;
+        } else if (err?.response?.status === 401) {
           setRequiresLogin(true);
           setIsAuthenticated(false);
           setAccessError('');

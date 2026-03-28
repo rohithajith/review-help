@@ -11,12 +11,23 @@ export default function Login({ onLoginSuccess }) {
   const [resetMessage, setResetMessage] = useState('');
   const [error, setError] = useState(null);
 
+  const needsPayment = (business) => {
+    if (!business) return false;
+    const billingRequired = business.billingRequired ?? business.billing_required;
+    const billingStatus = String(business.billingStatus ?? business.billing_status ?? 'active').toLowerCase();
+    return Boolean(billingRequired) && billingStatus !== 'active';
+  };
+
   const routeAfterLogin = (businesses = [], defaultBusinessId = null) => {
     const list = Array.isArray(businesses) ? businesses : [];
     if (list.length === 0) return false;
 
     if (list.length === 1) {
       const onlyId = Number(list[0].id);
+      if (needsPayment(list[0])) {
+        window.location.hash = `#/payment-pending?businessId=${onlyId}`;
+        return true;
+      }
       window.location.hash = `#/business/${onlyId}/admin`;
       return true;
     }
@@ -35,6 +46,12 @@ export default function Login({ onLoginSuccess }) {
     try {
       localStorage.setItem('settings', JSON.stringify({ ...settings, businessId: selectedId }));
     } catch (e) { /* ignore storage failures */ }
+
+    const selectedBusiness = list.find((b) => Number(b.id) === selectedId) || list[0];
+    if (needsPayment(selectedBusiness)) {
+      window.location.hash = `#/payment-pending?businessId=${Number(selectedBusiness.id)}`;
+      return true;
+    }
 
     window.location.hash = '#/admin';
     return true;
