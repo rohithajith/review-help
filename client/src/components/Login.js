@@ -68,6 +68,7 @@ export default function Login({ onLoginSuccess }) {
       try { if (api && api.defaults) api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`; } catch (e) {}
 
       let redirected = false;
+      let userContextFailed = false;
 
       // Preferred flow: fetch user context (owned businesses) and route accordingly
       try {
@@ -78,7 +79,15 @@ export default function Login({ onLoginSuccess }) {
           if (redirected) return;
         }
       } catch (e) {
+        userContextFailed = true;
         console.warn('User context call failed, falling back to onboarding', e);
+      }
+
+      // If user-context call failed transiently, do not block successful auth.
+      // Route to admin and let authenticated pages finish initialization.
+      if (!redirected && userContextFailed) {
+        window.location.hash = '#/admin';
+        return;
       }
 
       // Fallback for first-time users with no business yet.
@@ -94,7 +103,9 @@ export default function Login({ onLoginSuccess }) {
           setError('Login succeeded but no business was returned. Please try again or contact support.');
         } catch (e) {
           console.warn('Onboarding call failed', e);
-          setError('Unable to complete login. Please try again.');
+          // Do not block signed-in users if onboarding endpoint is transiently unavailable.
+          window.location.hash = '#/admin';
+          return;
         }
       }
 
