@@ -15,6 +15,34 @@ function getStripe() {
   return stripe;
 }
 
+function normalizeBaseUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  const withoutTrailingSlash = value.replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(withoutTrailingSlash)) return null;
+  return withoutTrailingSlash;
+}
+
+function resolveFrontendUrl(req) {
+  const configured = normalizeBaseUrl(process.env.FRONTEND_URL);
+  if (configured) return configured;
+
+  // Prefer request origin when available.
+  const originHeader = normalizeBaseUrl(req?.headers?.origin);
+  if (originHeader) return originHeader;
+
+  const forwardedProto = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = forwardedProto || req?.protocol || 'https';
+  const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
+
+  if (host && !/^localhost(?::\d+)?$/i.test(host) && !/^127\.0\.0\.1(?::\d+)?$/i.test(host)) {
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+
+  // Production-safe fallback for hosted deployment.
+  return 'https://app.reviewhelp.uk';
+}
+
 // Plan configuration: map plan names to Stripe price details
 const PLAN_CONFIG = {
   'Starter': null, // free trial
@@ -58,7 +86,7 @@ router.post('/create-checkout-session', authMiddleware, async (req, res) => {
     const mapping = PLAN_CONFIG[plan] || null;
     if (!mapping) return res.status(400).json({ error: 'Plan does not require checkout or is invalid' });
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3004';
+    const frontendUrl = resolveFrontendUrl(req);
 
     // Build subscription checkout session
     const sessionParams = {
