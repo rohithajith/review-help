@@ -43,6 +43,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
+import { resolveBusinessIdFromShortCode } from './utils/templateShare';
 import './App.css';
 
 // Logo mapping for businesses (static logos stored in public/logos/)
@@ -969,6 +970,31 @@ function BusinessAdminPage() {
   return <BusinessAdmin businessId={businessId} />;
 }
 
+function ShortLinkRedirectPage() {
+  const { shortCode } = useParams();
+  const businessId = resolveBusinessIdFromShortCode(shortCode);
+
+  if (businessId) {
+    return <Navigate to={`/business/${businessId}`} replace />;
+  }
+
+  return (
+    <Box sx={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2 }}>
+      <Paper sx={{ p: 3, width: '100%', maxWidth: 420, textAlign: 'center' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+          Invalid Share Link
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+          This short link is not valid. Ask the business owner for a new link.
+        </Typography>
+        <Button variant="contained" onClick={() => { window.location.hash = '#/'; }}>
+          Go to Home
+        </Button>
+      </Paper>
+    </Box>
+  );
+}
+
 function AppLayout() {
   const location = useLocation();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -1026,6 +1052,7 @@ function AppLayout() {
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />
+        <Route path="/b/:shortCode" element={<ShortLinkRedirectPage />} />
         
         {/* Business-specific admin - give this URL to business owners */}
         {/* Example: http://localhost:3000/#/business/2/admin for Myra's admin */}

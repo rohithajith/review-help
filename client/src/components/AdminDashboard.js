@@ -40,6 +40,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import api from '../api';
 import supabase from '../lib/supabaseClient';
 import LogsViewer from './LogsViewer';
+import TemplateSharePanel from './TemplateSharePanel';
+import { hasSeenShareQr, markShareQrSeen } from '../utils/templateShare';
 
 // Default review platforms
 const DEFAULT_REVIEW_PLATFORMS = [
@@ -92,6 +94,7 @@ const AdminDashboard = () => {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const handleBillingRequired = useCallback((err, fallbackBusinessId = null) => {
     if (err?.response?.status !== 402) return false;
     const pendingBusinessId = err?.response?.data?.businessId || fallbackBusinessId || selectedBusinessId;
@@ -235,6 +238,14 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (authReady && selectedBusinessId) fetchBackups(selectedBusinessId);
   }, [authReady, selectedBusinessId, fetchBackups]);
+
+  useEffect(() => {
+    const businessId = Number(selectedBusinessId);
+    if (!authReady || !Number.isInteger(businessId) || businessId <= 0) return;
+    if (!hasSeenShareQr(businessId)) {
+      setShowShareDialog(true);
+    }
+  }, [authReady, selectedBusinessId]);
 
   const saveSettings = async () => {
     try {
@@ -491,9 +502,23 @@ const AdminDashboard = () => {
                   ))}
                 </Select>
               </FormControl>
-
             </CardContent>
           </Card>
+
+          {selectedBusinessId && (
+            <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+              <CardHeader
+                title="Share with Customers"
+                sx={{
+                  background: 'linear-gradient(90deg, rgba(248,249,250,0.9), rgba(255,255,255,0.9))',
+                  '& .MuiCardHeader-title': { fontWeight: 600, color: '#172554' },
+                }}
+              />
+              <CardContent>
+                <TemplateSharePanel businessId={selectedBusinessId} />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Templates Card */}
           <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
@@ -911,6 +936,32 @@ const AdminDashboard = () => {
           </Button>
           <Button variant="contained" onClick={editingBackup ? handleCreateBackup : handleCreateTemplate}>
             Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showShareDialog}
+        onClose={() => {
+          markShareQrSeen(selectedBusinessId);
+          setShowShareDialog(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Share Your Review Page</DialogTitle>
+        <DialogContent dividers>
+          <TemplateSharePanel businessId={selectedBusinessId} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              markShareQrSeen(selectedBusinessId);
+              setShowShareDialog(false);
+            }}
+          >
+            Done
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,6 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, CircularProgress, Alert, Button, Paper } from '@mui/material';
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Alert,
+  Button,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@mui/material';
 import api from '../api';
+import TemplateSharePanel from './TemplateSharePanel';
+import { hasSeenShareQr, markShareQrSeen } from '../utils/templateShare';
 
 export default function SignupSuccess() {
   const [loading, setLoading] = useState(true);
@@ -8,6 +21,7 @@ export default function SignupSuccess() {
   const [sessionData, setSessionData] = useState(null);
   const [pendingBusinessId, setPendingBusinessId] = useState(null);
   const [canRetryVerification, setCanRetryVerification] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     const verifySession = async () => {
@@ -50,6 +64,21 @@ export default function SignupSuccess() {
 
     verifySession();
   }, []);
+
+  useEffect(() => {
+    const businessId = Number(sessionData?.businessId);
+    if (!Number.isInteger(businessId) || businessId <= 0) return;
+    if (!hasSeenShareQr(businessId)) {
+      setShowShareModal(true);
+    }
+  }, [sessionData?.businessId]);
+
+  const closeShareModal = () => {
+    if (sessionData?.businessId) {
+      markShareQrSeen(sessionData.businessId);
+    }
+    setShowShareModal(false);
+  };
 
   if (loading) {
     return (
@@ -117,7 +146,10 @@ export default function SignupSuccess() {
           <Button
             variant="contained"
             size="large"
-            onClick={() => (window.location.hash = `#/business/${sessionData.businessId}/admin`)}
+            onClick={() => {
+              markShareQrSeen(sessionData.businessId);
+              window.location.hash = `#/business/${sessionData.businessId}/admin`;
+            }}
             sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
           >
             Go to Dashboard
@@ -134,6 +166,37 @@ export default function SignupSuccess() {
           </Button>
         )}
       </Paper>
+
+      <Dialog
+        open={showShareModal}
+        onClose={closeShareModal}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          Share Your Review Page
+        </DialogTitle>
+        <DialogContent dividers>
+          <TemplateSharePanel businessId={sessionData?.businessId} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button variant="outlined" onClick={closeShareModal}>
+            Close
+          </Button>
+          {sessionData?.businessId && (
+            <Button
+              variant="contained"
+              onClick={() => {
+                markShareQrSeen(sessionData.businessId);
+                setShowShareModal(false);
+                window.location.hash = `#/business/${sessionData.businessId}/admin`;
+              }}
+            >
+              Continue to Dashboard
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

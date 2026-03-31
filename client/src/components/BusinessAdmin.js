@@ -37,6 +37,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SaveIcon from '@mui/icons-material/Save';
 import api from '../api';
 import supabase from '../lib/supabaseClient';
+import TemplateSharePanel from './TemplateSharePanel';
+import { hasSeenShareQr, markShareQrSeen } from '../utils/templateShare';
 
 const DEFAULT_REVIEW_PLATFORMS = [
   { name: 'Google', url: '' },
@@ -94,6 +96,7 @@ const BusinessAdmin = ({ businessId }) => {
   const [alertVariant, setAlertVariant] = useState('success');
   const [loading, setLoading] = useState(true);
   const [templatesGenerating, setTemplatesGenerating] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Check if already authenticated (has valid session token)
   useEffect(() => {
@@ -208,6 +211,14 @@ const BusinessAdmin = ({ businessId }) => {
     };
     if (businessId && isAuthenticated) loadData();
   }, [businessId, isAuthenticated, fetchBusiness, fetchTemplates, fetchBackups, fetchReviews]);
+
+  useEffect(() => {
+    const normalizedBusinessId = Number(businessId);
+    if (!isAuthenticated || !Number.isInteger(normalizedBusinessId) || normalizedBusinessId <= 0) return;
+    if (!hasSeenShareQr(normalizedBusinessId)) {
+      setShowShareDialog(true);
+    }
+  }, [businessId, isAuthenticated]);
 
   // If user just signed up and onboarding template generation is running,
   // keep polling until templates are available so the admin page gives
@@ -581,6 +592,15 @@ const BusinessAdmin = ({ businessId }) => {
       </Box>
 
       <Grid container spacing={2.5} alignItems="stretch">
+        <Grid item xs={12}>
+          <Card sx={cardSx}>
+            <CardHeader title="Share with Customers" sx={cardHeaderSx} />
+            <CardContent>
+              <TemplateSharePanel businessId={businessId} />
+            </CardContent>
+          </Card>
+        </Grid>
+
         <Grid item xs={12} md={4}>
           <Card sx={cardSx}>
             <CardHeader
@@ -900,6 +920,34 @@ const BusinessAdmin = ({ businessId }) => {
         </Card>
         </Grid>
       </Grid>
+
+      <Dialog
+        open={showShareDialog}
+        onClose={() => {
+          markShareQrSeen(businessId);
+          setShowShareDialog(false);
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          Share Your Review Page
+        </DialogTitle>
+        <DialogContent dividers>
+          <TemplateSharePanel businessId={businessId} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              markShareQrSeen(businessId);
+              setShowShareDialog(false);
+            }}
+          >
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Create Template Dialog */}
       <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)} maxWidth="sm" fullWidth>
