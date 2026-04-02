@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const templatesRoutes = require('./routes/templatesRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -16,6 +17,54 @@ const paymentsRoutes = require('./routes/paymentsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5002;
 let infraInitPromise = null;
+
+function normalizeOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (!/^https?:$/i.test(url.protocol)) return '';
+    return `${url.protocol}//${url.host}`.toLowerCase();
+  } catch (e) {
+    return '';
+  }
+}
+
+function getAllowedOrigins() {
+  const configured = String(process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((v) => normalizeOrigin(v))
+    .filter(Boolean);
+  const frontend = normalizeOrigin(process.env.FRONTEND_URL);
+  if (frontend) configured.push(frontend);
+
+  if (process.env.NODE_ENV !== 'production') {
+    configured.push('http://localhost:3000', 'http://localhost:3001', 'http://localhost:3004');
+  }
+  return new Set(configured);
+}
+
+const allowedOrigins = getAllowedOrigins();
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    const normalized = normalizeOrigin(origin);
+    if (normalized && allowedOrigins.has(normalized)) return callback(null, true);
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-key', 'stripe-signature'],
+  maxAge: 60 * 60 * 24,
+};
+
+const apiLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  max: Number(process.env.RATE_LIMIT_MAX || (process.env.NODE_ENV === 'production' ? 120 : 1000)),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/payments/webhook',
+  message: { error: 'Too many requests, please try again later.' },
+});
 
 async function initializeInfrastructure() {
   if (infraInitPromise) return infraInitPromise;
@@ -42,13 +91,21 @@ async function initializeInfrastructure() {
 }
 
 // Middleware
-app.use(cors());
+app.set('trust proxy', 1);
+app.use(cors(corsOptions));
 app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 // Stripe webhook needs raw body for signature verification - must be before express.json()
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
+app.use('/api', apiLimiter);
 
 // Simple request logger that includes businessId when present
 app.use((req, res, next) => {
@@ -91,9 +148,13 @@ app.get('/', (req, res) => {
 // Centralized error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err && err.stack ? err.stack : err);
-  // don't leak internal error details in production -- show message and code
+  const isProd = process.env.NODE_ENV === 'production';
   const status = err && err.status ? err.status : 500;
-  res.status(status).json({ error: err.message || 'Internal server error' });
+  const fallbackMessage = status >= 500 ? 'Internal server error' : 'Request failed';
+  const safeMessage = (isProd && status >= 500)
+    ? 'Internal server error'
+    : (err && err.message ? err.message : fallbackMessage);
+  res.status(status).json({ error: safeMessage });
 });
 
 // Start the server only if not required by tests

@@ -1,34 +1,42 @@
 const express = require('express');
 const { body, param } = require('express-validator');
 const router = express.Router({ mergeParams: true });
+const rateLimit = require('express-rate-limit');
 const templatesController = require('../controllers/templatesController');
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
 const billingMiddleware = require('../middleware/billingMiddleware');
+const { requireAdminApiKey } = require('../middleware/adminKeyMiddleware');
 const { requirePlan } = require('../middleware/planMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 
 // helper to forward async errors to centralized handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const requireAdminApiKey = (req, res, next) => {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) {
-    return res.status(403).json({ error: 'ADMIN_API_KEY is not configured' });
-  }
-  const provided = req.headers['x-admin-key'];
-  if (!provided || provided !== expected) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
-};
 const ownerWithBilling = [authMiddleware, ownerMiddleware, billingMiddleware];
+
+const publicWriteLimiter = rateLimit({
+  windowMs: Number(process.env.PUBLIC_WRITE_WINDOW_MS || 60_000),
+  max: Number(process.env.PUBLIC_WRITE_RATE_LIMIT_MAX || 40),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+const publicAiLimiter = rateLimit({
+  windowMs: Number(process.env.AI_WINDOW_MS || 60_000),
+  max: Number(process.env.AI_RATE_LIMIT_MAX || 12),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests, please try again later.' },
+});
 // Get all active templates
 router.get('/templates', asyncHandler(templatesController.getActiveTemplates));
 
 // Submit and save an in-app review
 router.post(
   '/reviews',
+  publicWriteLimiter,
   [
     body('rating').isInt({ min: 1, max: 5 }),
     body('reviewText').isString().trim().isLength({ min: 1 }),
@@ -43,6 +51,7 @@ router.get('/reviews', ...ownerWithBilling, asyncHandler(templatesController.get
 // Compose review from guided Q&A answers (public)
 router.post(
   '/reviews/compose',
+  publicAiLimiter,
   [
     body('answers').isObject(),
     body('skippedKeys').optional().isArray(),
@@ -53,6 +62,7 @@ router.post(
 // Polish review text with AI (public)
 router.post(
   '/reviews/polish',
+  publicAiLimiter,
   [
     body('reviewText').isString().trim().isLength({ min: 1, max: 2000 }),
   ],
@@ -82,7 +92,7 @@ router.get('/admin/access', ...ownerWithBilling, asyncHandler(async (req, res) =
 // uses req.db (attached by businessMiddleware) to talk to that tenant's DB.
 
 // Mark a template as used
-router.post('/templates/:id/use', [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.markTemplateAsUsed));
+router.post('/templates/:id/use', ...ownerWithBilling, [param('id').isInt({ gt: 0 })], asyncHandler(templatesController.markTemplateAsUsed));
 
 // Create a dummy owner for development/testing (creates Supabase user + maps to business)
 // Guarded: only allowed when ALLOW_DUMMY_OWNER=true or NODE_ENV != 'production'

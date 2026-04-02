@@ -28,6 +28,10 @@ function resolveFrontendUrl(req) {
   const configured = normalizeBaseUrl(process.env.FRONTEND_URL);
   if (configured) return configured;
 
+  if (process.env.NODE_ENV === 'production') {
+    return null;
+  }
+
   // Prefer request origin when available.
   const originHeader = normalizeBaseUrl(req?.headers?.origin);
   if (originHeader) return originHeader;
@@ -36,7 +40,7 @@ function resolveFrontendUrl(req) {
   const proto = forwardedProto || req?.protocol || 'https';
   const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
 
-  if (host && !/^localhost(?::\d+)?$/i.test(host) && !/^127\.0\.0\.1(?::\d+)?$/i.test(host)) {
+  if (host && /^[a-z0-9.-]+(?::\d+)?$/i.test(host) && !/^localhost(?::\d+)?$/i.test(host) && !/^127\.0\.0\.1(?::\d+)?$/i.test(host)) {
     return `${proto}://${host}`.replace(/\/+$/, '');
   }
 
@@ -157,6 +161,9 @@ async function createCheckoutSessionForBusiness({
   }
 
   const frontendUrl = resolveFrontendUrl(req);
+  if (!frontendUrl) {
+    throw new Error('FRONTEND_URL must be configured');
+  }
   const requesterEmail = req.user && req.user.email ? String(req.user.email).trim() : '';
 
   const sessionParams = {

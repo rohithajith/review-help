@@ -3,6 +3,7 @@ const router = express.Router();
 const businessController = require('../controllers/businessController');
 const authMiddleware = require('../middleware/authMiddleware');
 const ownerMiddleware = require('../middleware/ownerMiddleware');
+const { requireAdminApiKey } = require('../middleware/adminKeyMiddleware');
 const templateGenerationJob = require('../jobs/templateGenerationJob');
 const { getAdminPool } = require('../tenantManager');
 
@@ -13,18 +14,6 @@ const attachBusinessContext = (req, res, next) => {
   req.db = getAdminPool();
   next();
 };
-const requireAdminApiKey = (req, res, next) => {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) {
-    return res.status(403).json({ error: 'ADMIN_API_KEY is not configured' });
-  }
-  const provided = req.headers['x-admin-key'];
-  if (!provided || provided !== expected) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
-};
-
 // Create a new business (authenticated users become owner)
 router.post('/', authMiddleware, asyncHandler(businessController.createBusiness));
 
@@ -66,6 +55,6 @@ router.post('/generation/trigger-all', requireAdminApiKey, asyncHandler(async (r
 router.get('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.getPlan));
 
 // Update plan for a business (owner only in production; open in dev for testing)
-router.put('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.updatePlan));
+router.put('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, requireAdminApiKey, asyncHandler(businessController.updatePlan));
 
 module.exports = router;

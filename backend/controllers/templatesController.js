@@ -10,6 +10,33 @@ function hashConsentToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function normalizeBaseUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/i.test(url.protocol)) return '';
+    return `${url.protocol}//${url.host}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function resolveFrontendUrl(req) {
+  const configured = normalizeBaseUrl(process.env.FRONTEND_URL);
+  if (configured) return configured;
+
+  const origin = normalizeBaseUrl(req && req.headers ? req.headers.origin : '');
+  if (origin) return origin;
+
+  const host = String((req && typeof req.get === 'function' && req.get('host')) || '').trim();
+  if (/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) {
+    const proto = (req && req.protocol) || 'http';
+    return `${proto}://${host}`;
+  }
+  return 'http://localhost:3004';
+}
+
 // Get all active templates for the tenant
 exports.getActiveTemplates = async (req, res, next) => {
   const pool = req.db;
@@ -71,13 +98,12 @@ exports.submitReview = async (req, res, next) => {
         consentTokenHash,
       ]
     );
-    const host = (typeof req.get === 'function' && req.get('host')) ? req.get('host') : 'localhost';
-    const protocol = req.protocol || 'http';
+    const frontendUrl = resolveFrontendUrl(req);
 
     res.status(201).json({
       message: 'Review taken',
       review: inserted.rows[0],
-      revokeConsentUrl: revokeToken ? `${protocol}://${host}/#/reviews/revoke-consent?token=${encodeURIComponent(revokeToken)}` : null,
+      revokeConsentUrl: revokeToken ? `${frontendUrl}/#/reviews/revoke-consent?token=${encodeURIComponent(revokeToken)}` : null,
       revokeAvailable: Boolean(revokeToken),
       consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });

@@ -25,6 +25,7 @@ let adminPool = null;
  */
 function getPoolConfig(connectionString) {
   const config = { connectionString };
+  const rejectUnauthorized = String(process.env.PG_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
   
   // Enable SSL for Supabase and other cloud providers
   // Supabase hostnames contain 'supabase.co'
@@ -33,7 +34,7 @@ function getPoolConfig(connectionString) {
     connectionString.includes('sslmode=require') ||
     connectionString.includes('sslmode=verify-full')
   )) {
-    config.ssl = { rejectUnauthorized: false };
+    config.ssl = { rejectUnauthorized };
     // GCP VM currently has no usable IPv6 route to Supabase Postgres.
     // Force IPv4 resolution for PG sockets to avoid ENETUNREACH.
     config.lookup = (hostname, options, callback) => {
