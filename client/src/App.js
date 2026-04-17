@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from './api';
 import { HashRouter as Router, Route, Routes, useParams, useLocation, Navigate } from 'react-router-dom';
 import Login from './components/Login';
@@ -58,7 +58,7 @@ const businessLogos = {
   2: '/logos/myras-fish-bar.png', // Myra's Fish Bar
 };
 
-const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
+const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke token.';
 const COMPOSE_QUESTIONS = [
   { key: 'stay_purpose', label: 'What was the purpose of your stay?', placeholder: 'Business trip, family vacation, weekend break, etc.' },
   { key: 'room_cleanliness', label: 'How was the room cleanliness and comfort?', placeholder: 'Mention what stood out, if anything.' },
@@ -96,7 +96,7 @@ function BusinessTemplatePage() {
   const [lastSavedReview, setLastSavedReview] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [revokeAvailable, setRevokeAvailable] = useState(false);
-  const [revokeConsentUrl, setRevokeConsentUrl] = useState('');
+  const [revokeToken, setRevokeToken] = useState('');
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateEditorText, setTemplateEditorText] = useState('');
   const [showTemplateAssist, setShowTemplateAssist] = useState(false);
@@ -264,6 +264,22 @@ function BusinessTemplatePage() {
     return null;
   };
 
+  const sharePlatforms = useMemo(() => {
+    const configured = Array.isArray(business?.review_platforms)
+      ? business.review_platforms
+        .filter((p) => p && String(p.name || '').trim().length > 0)
+        .map((p) => String(p.name).trim())
+      : [];
+    const base = configured.length > 0 ? configured : ['Google', 'TripAdvisor'];
+    const seen = new Set();
+    return base.filter((name) => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [business?.review_platforms]);
+
   const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false, autoOpenChannel = null, suppressChannelPopup = false, showExternalOptions: nextShowExternalOptions = true }) => {
     if (!text.trim() || !rating) return;
     if (requireConsent && !consentAccepted) {
@@ -283,10 +299,10 @@ function BusinessTemplatePage() {
       }
 
       const response = await api.post(`/${businessId}/reviews`, requestBody);
-      const revokeUrl = response?.data?.revokeConsentUrl || '';
+      const savedRevokeToken = String(response?.data?.revokeToken || '').trim();
       setLastSavedReview(text.trim());
-      setRevokeConsentUrl(revokeUrl);
-      setRevokeAvailable(Boolean(response?.data?.revokeAvailable) || Boolean(revokeUrl));
+      setRevokeToken(savedRevokeToken);
+      setRevokeAvailable(Boolean(response?.data?.revokeAvailable) || Boolean(savedRevokeToken));
       setShowExternalOptions(nextShowExternalOptions);
       setSuccessMessage('Review submitted.');
       if (suppressChannelPopup) {
@@ -414,13 +430,13 @@ function BusinessTemplatePage() {
     setShowChannelPopup(false);
   };
 
-  const handleCopyRevokeLink = async () => {
-    if (!revokeConsentUrl) return;
+  const handleCopyRevokeToken = async () => {
+    if (!revokeToken) return;
     try {
-      await navigator.clipboard.writeText(revokeConsentUrl);
-      setCopyToast('Revoke link copied');
+      await navigator.clipboard.writeText(revokeToken);
+      setCopyToast('Revoke token copied');
     } catch (e) {
-      setCopyToast('Could not copy revoke link');
+      setCopyToast('Could not copy revoke token');
     }
   };
 
@@ -781,74 +797,54 @@ function BusinessTemplatePage() {
         <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Thank you for your valuable review</DialogTitle>
           <DialogContent>
+            {showExternalOptions && (
+              <Stack direction="column" spacing={1} sx={{ mb: 2, alignItems: 'center' }}>
+                {sharePlatforms.map((platformName) => (
+                  <Button
+                    key={platformName}
+                    size="medium"
+                    variant="contained"
+                    onClick={() => handlePostToChannel(platformName)}
+                    sx={{
+                      py: 0.9,
+                      width: 240,
+                      borderRadius: 1.5,
+                      px: 2,
+                    }}
+                  >
+                    <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                      <OpenInNewIcon fontSize="small" />
+                      <Box component="span" sx={{ textAlign: 'left' }}>{platformName}</Box>
+                    </Box>
+                  </Button>
+                ))}
+              </Stack>
+            )}
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {showExternalOptions
-                ? 'Your review has been saved. If you would like, choose a platform below to share it.'
+                ? 'Please choose a platform below to share it:'
                 : 'Your review has been saved in the app.'}
             </Typography>
-            {revokeAvailable && revokeConsentUrl && (
+            {revokeAvailable && revokeToken && (
               <Box sx={{ mt: 1 }}>
                 <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1 }}>
-                  Save this link if you may want to withdraw consent later.
+                  Save this token if you may want to withdraw consent later.
                 </Typography>
-                <TextField
-                  fullWidth
-                  size="small"
-                  value={revokeConsentUrl}
-                  InputProps={{ readOnly: true }}
-                  sx={{ mb: 1 }}
-                />
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Button variant="outlined" size="small" onClick={handleCopyRevokeLink}>
-                    Copy Link
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<OpenInNewIcon />}
-                    onClick={() => window.open(revokeConsentUrl, '_blank')}
-                  >
-                    Open Revoke Page
-                  </Button>
-                </Stack>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', mb: 1 }}>
+                  {revokeToken}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1 }}>
+                  To remove your review go to app.reviewhelp.uk/revoke and paste your token.
+                </Typography>
+                <Button variant="outlined" size="small" onClick={handleCopyRevokeToken}>
+                  Copy Token
+                </Button>
               </Box>
             )}
           </DialogContent>
           <DialogActions sx={{ p: 2, pt: 0, flexDirection: 'column', alignItems: 'center', gap: 1 }}>
             {showExternalOptions ? (
               <>
-                <Button
-                  size="medium"
-                  variant="contained"
-                  onClick={() => handlePostToChannel('Google')}
-                  sx={{
-                    py: 0.9,
-                    width: 240,
-                    borderRadius: 1.5,
-                    px: 2,
-                  }}
-                >
-                  <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
-                    <OpenInNewIcon fontSize="small" />
-                    <Box component="span" sx={{ textAlign: 'left' }}>Google</Box>
-                  </Box>
-                </Button>
-                <Button
-                  size="medium"
-                  variant="contained"
-                  onClick={() => handlePostToChannel('TripAdvisor')}
-                  sx={{
-                    py: 0.9,
-                    width: 240,
-                    borderRadius: 1.5,
-                    px: 2,
-                  }}
-                >
-                  <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
-                    <OpenInNewIcon fontSize="small" />
-                    <Box component="span" sx={{ textAlign: 'left' }}>TripAdvisor</Box>
-                  </Box>
-                </Button>
                 <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
                   Skip
                 </Button>
@@ -1029,6 +1025,15 @@ function RevokeConsentPage() {
             ) : (
               <>
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Revoke token"
+                  placeholder="revoke-e8am9le"
+                  value={token}
+                  onChange={(e) => setToken(String(e.target.value || '').trim())}
+                  sx={{ mb: 2 }}
+                />
                 <Button variant="contained" onClick={handleRevoke} disabled={submitting || !token}>
                   {submitting ? 'Revoking...' : 'Revoke Consent'}
                 </Button>
@@ -1128,6 +1133,7 @@ function AppLayout() {
         <Route path="/payment-pending" element={<PaymentPending />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/reviews/revoke-consent" element={<RevokeConsentPage />} />
+        <Route path="/revoke" element={<RevokeConsentPage />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />

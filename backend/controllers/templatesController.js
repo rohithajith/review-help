@@ -11,6 +11,11 @@ function hashConsentToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function generateRevokeToken() {
+  const suffix = crypto.randomBytes(5).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+  return `revoke-${suffix.padEnd(6, 'x').slice(0, 8)}`;
+}
+
 function normalizeBaseUrl(raw) {
   const value = String(raw || '').trim();
   if (!value) return '';
@@ -112,7 +117,7 @@ exports.submitReview = async (req, res, next) => {
       }
     }
 
-    const revokeToken = consentAccepted ? crypto.randomBytes(32).toString('hex') : null;
+    const revokeToken = consentAccepted ? generateRevokeToken() : null;
     const consentTokenHash = revokeToken ? hashConsentToken(revokeToken) : null;
 
     await pool.query('BEGIN');
@@ -120,9 +125,9 @@ exports.submitReview = async (req, res, next) => {
     const inserted = await pool.query(
       `INSERT INTO customer_reviews (
         business_id, template_id, rating, review_text, created_at,
-        consent_granted, consent_granted_at, consent_statement_version, consent_statement_text, consent_token_hash
+        consent_granted, consent_granted_at, consent_statement_version, consent_statement_text, consent_token_hash, consent_token
       )
-      VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10)
       RETURNING id, business_id, template_id, rating, review_text, created_at, consent_granted, consent_granted_at, consent_revoked_at`,
       [
         businessId,
@@ -134,6 +139,7 @@ exports.submitReview = async (req, res, next) => {
         consentAccepted ? CONSENT_STATEMENT_VERSION : null,
         consentAccepted ? CONSENT_STATEMENT_TEXT : null,
         consentTokenHash,
+        revokeToken,
       ]
     );
 
@@ -142,12 +148,11 @@ exports.submitReview = async (req, res, next) => {
     }
 
     await pool.query('COMMIT');
-    const frontendUrl = resolveFrontendUrl(req);
-
     res.status(201).json({
       message: 'Review taken',
       review: inserted.rows[0],
-      revokeConsentUrl: revokeToken ? `${frontendUrl}/#/reviews/revoke-consent?token=${encodeURIComponent(revokeToken)}` : null,
+      revokeToken: revokeToken || null,
+      revokeInstructions: revokeToken ? 'To remove your review go to app.reviewhelp.uk/revoke and paste your token' : null,
       revokeAvailable: Boolean(revokeToken),
       consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });
@@ -224,10 +229,18 @@ exports.revokeConsentByToken = async (req, res, next) => {
   try {
     const pool = getAdminPool();
     const tokenHash = hashConsentToken(token);
-    const existing = await pool.query(
-      'SELECT id, consent_revoked_at FROM customer_reviews WHERE consent_token_hash = $1 LIMIT 1',
-      [tokenHash]
+    let existing = await pool.query(
+      'SELECT id, consent_revoked_at FROM customer_reviews WHERE consent_token = $1 LIMIT 1',
+      [token]
     );
+    let lookupByHash = false;
+    if (existing.rowCount === 0) {
+      existing = await pool.query(
+        'SELECT id, consent_revoked_at FROM customer_reviews WHERE consent_token_hash = $1 LIMIT 1',
+        [tokenHash]
+      );
+      lookupByHash = true;
+    }
     if (existing.rowCount === 0) {
       return res.status(404).json({ message: 'Invalid or expired revocation token' });
     }
@@ -243,9 +256,9 @@ exports.revokeConsentByToken = async (req, res, next) => {
     const updated = await pool.query(
       `UPDATE customer_reviews
        SET consent_revoked_at = NOW()
-       WHERE consent_token_hash = $1
+       WHERE ${lookupByHash ? 'consent_token_hash = $1' : 'consent_token = $1'}
        RETURNING id, consent_revoked_at`,
-      [tokenHash]
+      [lookupByHash ? tokenHash : token]
     );
 
     return res.json({

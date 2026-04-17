@@ -33,24 +33,28 @@ describe('review consent flow', () => {
     expect(req.db.query).not.toHaveBeenCalled();
   });
 
-  test('submitReview stores consent metadata and returns revoke URL', async () => {
-    const dbQuery = jest
-      .fn()
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 9 }] })
-      .mockResolvedValueOnce({
-        rowCount: 1,
-        rows: [{
-          id: 77,
-          business_id: '2',
-          template_id: 9,
-          rating: 5,
-          review_text: 'Great service',
-          created_at: new Date().toISOString(),
-          consent_granted: true,
-          consent_granted_at: new Date().toISOString(),
-          consent_revoked_at: null,
-        }],
-      });
+  test('submitReview stores consent metadata and returns revoke token', async () => {
+    const dbQuery = jest.fn(async (sql) => {
+      if (sql.includes('SELECT id FROM review_templates')) return { rowCount: 1, rows: [{ id: 9 }] };
+      if (sql.startsWith('INSERT INTO customer_reviews')) {
+        return {
+          rowCount: 1,
+          rows: [{
+            id: 77,
+            business_id: '2',
+            template_id: 9,
+            rating: 5,
+            review_text: 'Great service',
+            created_at: new Date().toISOString(),
+            consent_granted: true,
+            consent_granted_at: new Date().toISOString(),
+            consent_revoked_at: null,
+          }],
+        };
+      }
+      if (sql.includes('SELECT * FROM backup_templates')) return { rowCount: 0, rows: [] };
+      return { rowCount: 1, rows: [] };
+    });
     const req = {
       db: { query: dbQuery },
       businessId: '2',
@@ -65,8 +69,8 @@ describe('review consent flow', () => {
 
     expect(res.status).toHaveBeenCalledWith(201);
     const payload = res.json.mock.calls[0][0];
-    expect(payload).toHaveProperty('revokeConsentUrl');
-    expect(payload.revokeConsentUrl).toContain('/#/reviews/revoke-consent?token=');
+    expect(payload).toHaveProperty('revokeToken');
+    expect(payload.revokeToken).toMatch(/^revoke-[a-z0-9]{6,8}$/);
     expect(payload).toHaveProperty('revokeAvailable', true);
     expect(payload).toHaveProperty('consentStatementVersion', 'v1');
     expect(payload.review).toHaveProperty('consent_granted', true);
@@ -74,19 +78,24 @@ describe('review consent flow', () => {
   });
 
   test('submitReview accepts own review without consent', async () => {
-    const dbQuery = jest.fn().mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{
-        id: 101,
-        business_id: '2',
-        template_id: null,
-        rating: 5,
-        review_text: 'Own review',
-        created_at: new Date().toISOString(),
-        consent_granted: false,
-        consent_granted_at: null,
-        consent_revoked_at: null,
-      }],
+    const dbQuery = jest.fn(async (sql) => {
+      if (sql.startsWith('INSERT INTO customer_reviews')) {
+        return {
+          rowCount: 1,
+          rows: [{
+            id: 101,
+            business_id: '2',
+            template_id: null,
+            rating: 5,
+            review_text: 'Own review',
+            created_at: new Date().toISOString(),
+            consent_granted: false,
+            consent_granted_at: null,
+            consent_revoked_at: null,
+          }],
+        };
+      }
+      return { rowCount: 1, rows: [] };
     });
     const req = {
       db: { query: dbQuery },
@@ -103,7 +112,7 @@ describe('review consent flow', () => {
     expect(res.status).toHaveBeenCalledWith(201);
     const payload = res.json.mock.calls[0][0];
     expect(payload.review).toHaveProperty('consent_granted', false);
-    expect(payload).toHaveProperty('revokeConsentUrl', null);
+    expect(payload).toHaveProperty('revokeToken', null);
     expect(payload).toHaveProperty('revokeAvailable', false);
     expect(next).not.toHaveBeenCalled();
   });
@@ -116,7 +125,7 @@ describe('review consent flow', () => {
         .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 77, consent_revoked_at: new Date().toISOString() }] }),
     };
     getAdminPool.mockReturnValue(pool);
-    const req = { body: { token: 'a'.repeat(64) } };
+    const req = { body: { token: 'revoke-e8am9le' } };
     const res = makeRes();
     const next = jest.fn();
 
