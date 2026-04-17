@@ -7,6 +7,7 @@ describe('TemplateSharePanel', () => {
     render(<TemplateSharePanel businessId={15} />);
     expect(screen.getByText('Short Link')).toBeTruthy();
     expect(screen.getByRole('button', { name: /copy link/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /download qr/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /open template page/i })).toBeTruthy();
   });
 

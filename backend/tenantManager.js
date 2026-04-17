@@ -25,7 +25,12 @@ let adminPool = null;
  */
 function getPoolConfig(connectionString) {
   const config = { connectionString };
-  const rejectUnauthorized = String(process.env.PG_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
+  const explicitRejectUnauthorized = String(process.env.PG_SSL_REJECT_UNAUTHORIZED || '').trim();
+  const rejectUnauthorized = explicitRejectUnauthorized
+    ? String(explicitRejectUnauthorized).toLowerCase() !== 'false'
+    // Keep Supabase connections backwards-compatible in local/dev setups that
+    // present custom/self-signed cert chains unless explicitly overridden.
+    : !connectionString.includes('supabase.co');
   
   // Enable SSL for Supabase and other cloud providers
   // Supabase hostnames contain 'supabase.co'

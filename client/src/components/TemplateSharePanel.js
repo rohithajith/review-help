@@ -1,14 +1,29 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
-import { QRCodeSVG } from 'qrcode.react';
+import DownloadIcon from '@mui/icons-material/Download';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { copyTextToClipboard } from '../utils/clipboardUtils';
 import { getTemplateShareData } from '../utils/templateShare';
 
+function supportsCanvasQr() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  // JSDOM lacks a real canvas implementation and logs noisy not-implemented errors.
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(String(navigator.userAgent || ''))) return false;
+  try {
+    const c = document.createElement('canvas');
+    return Boolean(c && typeof c.getContext === 'function');
+  } catch (e) {
+    return false;
+  }
+}
+
 export default function TemplateSharePanel({ businessId }) {
   const [copied, setCopied] = useState(false);
+  const qrCanvasRef = useRef(null);
+  const canDownloadQr = useMemo(() => supportsCanvasQr(), []);
 
   const shareData = useMemo(() => getTemplateShareData(businessId), [businessId]);
 
@@ -17,6 +32,20 @@ export default function TemplateSharePanel({ businessId }) {
     copyTextToClipboard(shareData.shortUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleDownloadQr = () => {
+    if (!shareData) return;
+    if (!canDownloadQr) return;
+    const canvasElement = qrCanvasRef.current
+      || document.getElementById(`share-qr-${shareData.businessId}`);
+    if (!canvasElement || typeof canvasElement.toDataURL !== 'function') return;
+
+    const downloadUrl = canvasElement.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `reviewhelp-qr-business-${shareData.businessId}.png`;
+    a.click();
   };
 
   if (!shareData) {
@@ -43,7 +72,18 @@ export default function TemplateSharePanel({ businessId }) {
             justifyContent: 'center',
           }}
         >
-          <QRCodeSVG value={shareData.shortUrl} size={128} level="M" includeMargin />
+          {canDownloadQr ? (
+            <QRCodeCanvas
+              id={`share-qr-${shareData.businessId}`}
+              ref={qrCanvasRef}
+              value={shareData.shortUrl}
+              size={128}
+              level="M"
+              includeMargin
+            />
+          ) : (
+            <QRCodeSVG value={shareData.shortUrl} size={128} level="M" includeMargin />
+          )}
         </Box>
         <Stack spacing={1} sx={{ minWidth: 240, flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -75,6 +115,16 @@ export default function TemplateSharePanel({ businessId }) {
               sx={{ borderRadius: 1, textTransform: 'none' }}
             >
               {copied ? 'Copied' : 'Copy Link'}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadQr}
+              disabled={!canDownloadQr}
+              sx={{ borderRadius: 1, textTransform: 'none' }}
+            >
+              Download QR
             </Button>
             <Button
               variant="outlined"

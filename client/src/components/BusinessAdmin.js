@@ -26,6 +26,7 @@ import {
   Chip,
   CircularProgress,
   Rating,
+  Slider,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -39,6 +40,7 @@ import api from '../api';
 import supabase from '../lib/supabaseClient';
 import TemplateSharePanel from './TemplateSharePanel';
 import { hasSeenShareQr, markShareQrSeen } from '../utils/templateShare';
+import { readBusinessLocalLogo, writeBusinessLocalLogo } from '../utils/businessLiveSync';
 
 const DEFAULT_REVIEW_PLATFORMS = [
   { name: 'Google', url: '' },
@@ -91,12 +93,18 @@ const BusinessAdmin = ({ businessId }) => {
   const [currentTemplate, setCurrentTemplate] = useState({ text: '' });
   const [editingBackup, setEditingBackup] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
+  const [businessName, setBusinessName] = useState('');
   const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
   const [loading, setLoading] = useState(true);
   const [templatesGenerating, setTemplatesGenerating] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showLogoCropDialog, setShowLogoCropDialog] = useState(false);
+  const [rawLogoSource, setRawLogoSource] = useState('');
+  const [logoZoom, setLogoZoom] = useState(1.2);
+  const [logoOffsetX, setLogoOffsetX] = useState(0);
+  const [logoOffsetY, setLogoOffsetY] = useState(0);
 
   // Check if already authenticated (has valid session token)
   useEffect(() => {
@@ -163,11 +171,31 @@ const BusinessAdmin = ({ businessId }) => {
     try {
       const res = await api.get(`/${businessId}/business`);
       const data = res.data || null;
+      const localLogo = readBusinessLocalLogo(businessId);
       setBusiness(data);
-      setLogoUrl(data?.logo_url || '');
+      setBusinessName(data?.name || '');
+      setLogoUrl(localLogo || data?.logo_url || '');
       setReviewPlatforms(Array.isArray(data?.review_platforms) ? data.review_platforms : DEFAULT_REVIEW_PLATFORMS);
     } catch (err) {
       console.error('Error fetching business:', err);
+    }
+  }, [businessId]);
+
+  const dispatchBusinessAdminUpdate = useCallback((type) => {
+    const normalizedBusinessId = Number(businessId);
+    if (!Number.isFinite(normalizedBusinessId)) return;
+    window.dispatchEvent(new CustomEvent('business-admin-updated', {
+      detail: {
+        businessId: normalizedBusinessId,
+        type,
+      },
+    }));
+    try {
+      const payload = JSON.stringify({ businessId: normalizedBusinessId, type, ts: Date.now() });
+      localStorage.setItem('business-admin-updated', payload);
+      localStorage.setItem(`business-admin-updated:${normalizedBusinessId}`, String(Date.now()));
+    } catch (e) {
+      // Ignore storage failures (private mode/quota).
     }
   }, [businessId]);
 
@@ -277,22 +305,44 @@ const BusinessAdmin = ({ businessId }) => {
 
   // Create template handler
   const handleCreateTemplate = async () => {
+    const isBackup = editingBackup;
+    const templateText = String(currentTemplate?.text || '');
+    const optimisticId = `tmp-${Date.now()}`;
+    const optimisticTemplate = { id: optimisticId, text: templateText };
+    const setTemplateState = isBackup ? setBackupTemplates : setTemplates;
+
     try {
-      if (editingBackup) {
-        await api.post(`/${businessId}/templates/backups`, { text: currentTemplate.text });
+      setTemplateState((prev) => [optimisticTemplate, ...(Array.isArray(prev) ? prev : [])]);
+
+      if (isBackup) {
+        const response = await api.post(`/${businessId}/templates/backups`, { text: templateText });
+        const createdTemplate = response?.data;
+        if (createdTemplate && typeof createdTemplate === 'object') {
+          setBackupTemplates((prev) => prev.map((template) => (
+            template.id === optimisticId ? createdTemplate : template
+          )));
+        }
         await fetchBackups();
         setAlertMessage('Backup template created successfully');
       } else {
-        await api.post(`/${businessId}/templates`, { text: currentTemplate.text });
+        const response = await api.post(`/${businessId}/templates`, { text: templateText });
+        const createdTemplate = response?.data;
+        if (createdTemplate && typeof createdTemplate === 'object') {
+          setTemplates((prev) => prev.map((template) => (
+            template.id === optimisticId ? createdTemplate : template
+          )));
+        }
         await fetchTemplates();
         setAlertMessage('Template created successfully');
       }
       setAlertVariant('success');
       setShowCreateModal(false);
       setCurrentTemplate({ text: '' });
+      dispatchBusinessAdminUpdate('templates');
       await fetchReviews();
     } catch (error) {
       console.error('Error creating template:', error);
+      setTemplateState((prev) => prev.filter((template) => template.id !== optimisticId));
       setAlertMessage('Error creating template');
       setAlertVariant('error');
     }
@@ -311,6 +361,7 @@ const BusinessAdmin = ({ businessId }) => {
       setShowEditModal(false);
       setAlertMessage('Template updated successfully');
       setAlertVariant('success');
+      dispatchBusinessAdminUpdate('templates');
       await fetchReviews();
     } catch (error) {
       console.error('Error updating template:', error);
@@ -332,6 +383,7 @@ const BusinessAdmin = ({ businessId }) => {
       setShowDeleteConfirm(false);
       setAlertMessage('Template deleted successfully');
       setAlertVariant('success');
+      dispatchBusinessAdminUpdate('templates');
       await fetchReviews();
     } catch (error) {
       console.error('Error deleting template:', error);
@@ -363,7 +415,11 @@ const BusinessAdmin = ({ businessId }) => {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setLogoUrl(String(reader.result || ''));
+      setRawLogoSource(String(reader.result || ''));
+      setLogoZoom(1.2);
+      setLogoOffsetX(0);
+      setLogoOffsetY(0);
+      setShowLogoCropDialog(true);
     };
     reader.onerror = () => {
       setAlertMessage('Could not read logo file');
@@ -372,7 +428,44 @@ const BusinessAdmin = ({ businessId }) => {
     reader.readAsDataURL(file);
   };
 
+  const handleApplyLogoCrop = () => {
+    if (!rawLogoSource) return;
+    const image = new Image();
+    image.onload = () => {
+      const canvasSize = 640;
+      const previewSize = 220;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasSize;
+      canvas.height = canvasSize;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setAlertMessage('Could not process logo crop');
+        setAlertVariant('error');
+        return;
+      }
+
+      const baseScale = Math.max(canvasSize / image.width, canvasSize / image.height);
+      const scale = baseScale * logoZoom;
+      const scaledW = image.width * scale;
+      const scaledH = image.height * scale;
+      const ratio = canvasSize / previewSize;
+      const dx = (canvasSize - scaledW) / 2 + (logoOffsetX * ratio);
+      const dy = (canvasSize - scaledH) / 2 + (logoOffsetY * ratio);
+
+      ctx.clearRect(0, 0, canvasSize, canvasSize);
+      ctx.drawImage(image, dx, dy, scaledW, scaledH);
+      setLogoUrl(canvas.toDataURL('image/png'));
+      setShowLogoCropDialog(false);
+    };
+    image.onerror = () => {
+      setAlertMessage('Could not process logo image');
+      setAlertVariant('error');
+    };
+    image.src = rawLogoSource;
+  };
+
   const handleSaveBusinessSettings = async () => {
+    const normalizedBusinessName = String(businessName || '').trim() || business?.name || '';
     try {
       const normalizedPlatforms = (Array.isArray(reviewPlatforms) ? reviewPlatforms : [])
         .map((p) => ({
@@ -381,22 +474,32 @@ const BusinessAdmin = ({ businessId }) => {
         }))
         .filter((p) => p.name || p.url);
 
+      // Save logo locally only to avoid large base64 payload errors.
+      writeBusinessLocalLogo(businessId, logoUrl || '');
+
       await api.put(`/${businessId}/business`, {
-        logo_url: logoUrl || null,
+        name: normalizedBusinessName,
         review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
       });
       setBusiness((prev) => ({
         ...(prev || {}),
-        logo_url: logoUrl || null,
+        name: normalizedBusinessName || prev?.name || '',
+        logo_url: logoUrl || '',
         review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
       }));
+      setBusinessName(normalizedBusinessName);
       setReviewPlatforms(normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS);
-      setAlertMessage('Branding and links saved successfully');
+      setAlertMessage('Branding and links saved successfully. Logo is stored locally on this browser.');
       setAlertVariant('success');
+      dispatchBusinessAdminUpdate('business');
     } catch (err) {
       console.error('Error saving business settings:', err);
-      setAlertMessage('Error saving branding or links');
-      setAlertVariant('error');
+      // Keep local logo even if remote update fails.
+      writeBusinessLocalLogo(businessId, logoUrl || '');
+      setBusiness((prev) => ({ ...(prev || {}), logo_url: logoUrl || '' }));
+      setAlertMessage('Logo saved locally, but failed to save name/links to Supabase.');
+      setAlertVariant('warning');
+      dispatchBusinessAdminUpdate('business');
     }
   };
 
@@ -578,7 +681,6 @@ const BusinessAdmin = ({ businessId }) => {
         >
           {business.name} - Admin
         </Typography>
-        <Chip label="Business Admin" color="primary" sx={{ borderRadius: 1 }} />
         <Button
           variant="outlined"
           color="error"
@@ -601,17 +703,34 @@ const BusinessAdmin = ({ businessId }) => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12}>
           <Card sx={cardSx}>
             <CardHeader
               title="Branding & Review Links"
               sx={cardHeaderSx}
             />
             <CardContent>
+              <TextField
+                fullWidth
+                size="small"
+                label="Business Name"
+                value={businessName}
+                onChange={(event) => setBusinessName(event.target.value)}
+                sx={{ mb: 1.5 }}
+              />
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 Upload your company logo to show it on the customer template page.
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1.2,
+                  alignItems: { xs: 'stretch', sm: 'center' },
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  mb: 2,
+                  '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } },
+                }}
+              >
                 <Button component="label" variant="outlined" size="small">
                   Upload Logo
                   <input type="file" accept="image/*" hidden onChange={handleLogoFileUpload} />
@@ -639,7 +758,15 @@ const BusinessAdmin = ({ businessId }) => {
                   component="img"
                   src={logoUrl}
                   alt="Company logo preview"
-                  sx={{ maxHeight: 72, width: 'auto', borderRadius: 1, border: '1px solid rgba(148,163,184,0.35)', p: 0.5, bgcolor: '#fff' }}
+                  sx={{
+                    maxHeight: 72,
+                    maxWidth: '100%',
+                    width: 'auto',
+                    borderRadius: 1,
+                    border: '1px solid rgba(148,163,184,0.35)',
+                    p: 0.5,
+                    bgcolor: '#fff',
+                  }}
                 />
               )}
 
@@ -650,39 +777,57 @@ const BusinessAdmin = ({ businessId }) => {
                 Add external review links customers can use after submitting feedback.
               </Typography>
               {reviewPlatforms.map((platform, index) => (
-                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.2, alignItems: 'center' }}>
+                <Box
+                  key={index}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'minmax(140px, 0.38fr) 1fr auto' },
+                    gap: 1,
+                    mb: 1.2,
+                    alignItems: 'center',
+                  }}
+                >
                   <TextField
                     size="small"
                     label="Name"
                     value={platform.name}
                     onChange={(e) => handlePlatformChange(index, 'name', e.target.value)}
-                    sx={{ width: '34%' }}
+                    fullWidth
                   />
                   <TextField
                     size="small"
                     label="URL"
                     value={platform.url}
                     onChange={(e) => handlePlatformChange(index, 'url', e.target.value)}
-                    sx={{ flexGrow: 1 }}
+                    fullWidth
                     placeholder="https://..."
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => window.open(normalizeUrl(platform.url), '_blank')}
-                    disabled={!platform.url}
-                    title="Test Link"
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      gap: 0.5,
+                      justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                      gridColumn: { xs: '1 / -1', sm: 'auto' },
+                    }}
                   >
-                    <OpenInNewIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleRemovePlatform(index)}
-                    disabled={reviewPlatforms.length <= 1}
-                    title="Remove Platform"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => window.open(normalizeUrl(platform.url), '_blank')}
+                      disabled={!platform.url}
+                      title="Test Link"
+                    >
+                      <OpenInNewIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleRemovePlatform(index)}
+                      disabled={reviewPlatforms.length <= 1}
+                      title="Remove Platform"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
                 </Box>
               ))}
               <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={handleAddPlatform}>
@@ -693,7 +838,7 @@ const BusinessAdmin = ({ businessId }) => {
         </Grid>
 
         {/* Active Templates */}
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12} md={6}>
           <Card sx={cardSx}>
             <CardHeader
               title={
@@ -765,7 +910,7 @@ const BusinessAdmin = ({ businessId }) => {
         </Grid>
 
         {/* Backup Templates */}
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6}>
           <Card sx={cardSx}>
             <CardHeader
               title={
@@ -841,7 +986,7 @@ const BusinessAdmin = ({ businessId }) => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Card sx={cardSx}>
           <CardHeader
             title={
@@ -945,6 +1090,97 @@ const BusinessAdmin = ({ businessId }) => {
             }}
           >
             Done
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showLogoCropDialog}
+        onClose={() => setShowLogoCropDialog(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ m: 0, p: 2, pr: 6 }}>
+          Crop Logo
+          <IconButton
+            onClick={() => setShowLogoCropDialog(false)}
+            sx={{ position: 'absolute', right: 8, top: 8, color: (theme) => theme.palette.grey[500] }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.2 }}>
+            Adjust zoom and position so the logo appears consistent on the template page.
+          </Typography>
+          <Box
+            sx={{
+              width: 220,
+              height: 220,
+              mx: 'auto',
+              borderRadius: 2,
+              border: '1px solid #d6deea',
+              overflow: 'hidden',
+              bgcolor: '#f8fafc',
+              position: 'relative',
+            }}
+          >
+            {rawLogoSource && (
+              <Box
+                component="img"
+                src={rawLogoSource}
+                alt="Logo crop preview"
+                sx={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  width: '100%',
+                  height: '100%',
+                  maxWidth: 'none',
+                  objectFit: 'cover',
+                  transform: `translate(calc(-50% + ${logoOffsetX}px), calc(-50% + ${logoOffsetY}px)) scale(${logoZoom})`,
+                  transformOrigin: 'center',
+                }}
+              />
+            )}
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" color="text.secondary">Zoom</Typography>
+            <Slider
+              min={1}
+              max={3}
+              step={0.01}
+              value={logoZoom}
+              onChange={(_, value) => setLogoZoom(Number(value))}
+            />
+          </Box>
+          <Box sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Horizontal</Typography>
+            <Slider
+              min={-100}
+              max={100}
+              step={1}
+              value={logoOffsetX}
+              onChange={(_, value) => setLogoOffsetX(Number(value))}
+            />
+          </Box>
+          <Box sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Vertical</Typography>
+            <Slider
+              min={-100}
+              max={100}
+              step={1}
+              value={logoOffsetY}
+              onChange={(_, value) => setLogoOffsetY(Number(value))}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button variant="outlined" onClick={() => setShowLogoCropDialog(false)}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleApplyLogoCrop} disabled={!rawLogoSource}>
+            Apply Crop
           </Button>
         </DialogActions>
       </Dialog>

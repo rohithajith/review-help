@@ -1,4 +1,5 @@
 const { getAdminPool } = require('../tenantManager');
+const { isBillingBypassUser } = require('../lib/billingBypass');
 
 function normalizeBusinessId(raw) {
   const n = Number(raw);
@@ -7,6 +8,13 @@ function normalizeBusinessId(raw) {
 
 module.exports = async (req, res, next) => {
   try {
+    if (isBillingBypassUser(req.user)) {
+      req.billingRequired = false;
+      req.billingStatus = 'active';
+      req.pendingPlan = null;
+      return next();
+    }
+
     const pool = req.db || getAdminPool();
     const businessId = normalizeBusinessId(
       req.businessId || (req.params && req.params.businessId) || (req.body && req.body.businessId)
@@ -47,4 +55,3 @@ module.exports = async (req, res, next) => {
     return next(err);
   }
 };
-

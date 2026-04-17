@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from './api';
 import { HashRouter as Router, Route, Routes, useParams, useLocation, Navigate } from 'react-router-dom';
 import Login from './components/Login';
@@ -44,6 +44,13 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
 import { resolveBusinessIdFromShortCode } from './utils/templateShare';
+import {
+  BUSINESS_ADMIN_UPDATED_EVENT,
+  isBusinessAdminUpdateForBusiness,
+  parseBusinessAdminStorageSignal,
+  parseBusinessId,
+  readBusinessLocalLogo,
+} from './utils/businessLiveSync';
 import './App.css';
 
 // Logo mapping for businesses (static logos stored in public/logos/)
@@ -66,9 +73,12 @@ const COMPOSE_QUESTIONS = [
 // =============================================================================
 function BusinessTemplatePage() {
   const { businessId } = useParams();
+  const normalizedBusinessId = parseBusinessId(businessId);
   const [business, setBusiness] = useState(null);
   const [businessError, setBusinessError] = useState(null);
   const { templates, loading, error, refresh } = useTemplates(businessId);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
   const scrollBg = useScrollGradient({
     topColor: '#f4f7fb',
     middleColor: '#edf2f8',
@@ -101,21 +111,88 @@ function BusinessTemplatePage() {
   const isErrorMessage = /could not|error|failed|forbidden|invalid|missing/i.test(String(successMessage || ''));
   const businessLogoSrc = business?.logo_url || businessLogos[businessId] || '';
 
+  const fetchBusinessDetails = useCallback(async (businessIdOverride = null) => {
+    const targetBusinessId = parseBusinessId(businessIdOverride) || normalizedBusinessId;
+    if (!targetBusinessId) return;
+    try {
+      const res = await api.get(`/${targetBusinessId}/business`);
+      const data = res.data || null;
+      const localLogo = readBusinessLocalLogo(targetBusinessId);
+      setBusiness(data ? { ...data, logo_url: localLogo || data.logo_url || '' } : null);
+      setBusinessError(null);
+    } catch (err) {
+      console.error('Error fetching business details', err);
+      setBusinessError('Business not found');
+    }
+  }, [normalizedBusinessId]);
+
   // Fetch business details when businessId changes
   useEffect(() => {
-    const fetchBusiness = async () => {
-      if (!businessId) return;
+    fetchBusinessDetails();
+  }, [fetchBusinessDetails]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
       try {
-        const res = await api.get(`/${businessId}/business`);
-        setBusiness(res.data || null);
-        setBusinessError(null);
-      } catch (err) {
-        console.error('Error fetching business details', err);
-        setBusinessError('Business not found');
+        const { data } = await supabase.auth.getSession();
+        if (active) {
+          setIsLoggedIn(Boolean(data?.session));
+          setAuthResolved(true);
+        }
+      } catch (e) {
+        if (active) {
+          setIsLoggedIn(false);
+          setAuthResolved(true);
+        }
       }
     };
-    fetchBusiness();
-  }, [businessId]);
+
+    loadSession();
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(Boolean(session));
+      setAuthResolved(true);
+    });
+
+    return () => {
+      active = false;
+      data?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!normalizedBusinessId) return undefined;
+
+    const refreshTemplatePageData = async () => {
+      const tasks = [];
+      if (typeof refresh === 'function') {
+        tasks.push(refresh(normalizedBusinessId));
+      }
+      tasks.push(fetchBusinessDetails(normalizedBusinessId));
+      await Promise.allSettled(tasks);
+    };
+
+    const handleBusinessAdminUpdated = (event) => {
+      if (!isBusinessAdminUpdateForBusiness(event?.detail, normalizedBusinessId)) return;
+      refreshTemplatePageData();
+    };
+
+    const handleStorageSignal = (event) => {
+      const signal = parseBusinessAdminStorageSignal(event);
+      if (!signal?.businessId || signal.businessId !== normalizedBusinessId) return;
+      refreshTemplatePageData();
+    };
+
+    window.addEventListener(BUSINESS_ADMIN_UPDATED_EVENT, handleBusinessAdminUpdated);
+    window.addEventListener('storage', handleStorageSignal);
+
+    return () => {
+      window.removeEventListener(BUSINESS_ADMIN_UPDATED_EVENT, handleBusinessAdminUpdated);
+      window.removeEventListener('storage', handleStorageSignal);
+    };
+  }, [fetchBusinessDetails, normalizedBusinessId, refresh]);
 
   useEffect(() => {
     if (!Array.isArray(templates) || templates.length === 0) {
@@ -419,22 +496,24 @@ function BusinessTemplatePage() {
           </Box>
         )}
 
-        {/* Admin Button - small, unobtrusive */}
-        <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<SettingsIcon />}
-            onClick={() => window.location.hash = `#/business/${businessId}/admin`}
-            sx={{ 
-              opacity: 0.7, 
-              '&:hover': { opacity: 1 },
-              backgroundColor: 'rgba(255,255,255,0.9)',
-            }}
-          >
-            Admin
-          </Button>
-        </Box>
+        {/* Admin Button - visible only for logged-out visitors */}
+        {authResolved && !isLoggedIn && (
+          <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<SettingsIcon />}
+              onClick={() => window.location.hash = `#/business/${businessId}/admin`}
+              sx={{
+                opacity: 0.7,
+                '&:hover': { opacity: 1 },
+                backgroundColor: 'rgba(255,255,255,0.9)',
+              }}
+            >
+              Admin
+            </Button>
+          </Box>
+        )}
 
         <Snackbar
           open={!!successMessage}

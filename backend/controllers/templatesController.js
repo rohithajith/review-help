@@ -5,6 +5,7 @@ const reviewAssistService = require('../services/reviewAssistService');
 
 const CONSENT_STATEMENT_VERSION = 'v1';
 const CONSENT_STATEMENT_TEXT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
+const generationService = require('../services/generationService');
 
 function hashConsentToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -35,6 +36,41 @@ function resolveFrontendUrl(req) {
     return `${proto}://${host}`;
   }
   return 'http://localhost:3004';
+}
+
+async function consumeTemplateAfterUse(pool, businessId, templateId, archivedText) {
+  await pool.query('INSERT INTO archived_templates (business_id, text, archived_at) VALUES ($1, $2, NOW())', [businessId, archivedText]);
+
+  const next = await pool.query(
+    'SELECT * FROM backup_templates WHERE business_id = $1 ORDER BY created_at ASC LIMIT 1 FOR UPDATE',
+    [businessId]
+  );
+
+  let replaced = false;
+  if (next.rowCount > 0) {
+    const nextRow = next.rows[0];
+    await pool.query(
+      'INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())',
+      [businessId, nextRow.text]
+    );
+    await pool.query('DELETE FROM backup_templates WHERE id = $1 AND business_id = $2', [nextRow.id, businessId]);
+    await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [templateId, businessId]);
+    replaced = true;
+  } else {
+    const fallback = 'Thank you for visiting — we appreciate your feedback.';
+    await pool.query(
+      'INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())',
+      [businessId, fallback]
+    );
+    await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [templateId, businessId]);
+    setImmediate(() => {
+      generationService.generateFromArchived(pool, businessId)
+        .then(() => console.info('generationService: urgent refill triggered'))
+        .catch(err => console.error('generationService urgent refill error:', err && err.stack ? err.stack : err));
+    });
+  }
+
+  return { replaced };
 }
 
 // Get all active templates for the tenant
@@ -79,6 +115,8 @@ exports.submitReview = async (req, res, next) => {
     const revokeToken = consentAccepted ? crypto.randomBytes(32).toString('hex') : null;
     const consentTokenHash = revokeToken ? hashConsentToken(revokeToken) : null;
 
+    await pool.query('BEGIN');
+
     const inserted = await pool.query(
       `INSERT INTO customer_reviews (
         business_id, template_id, rating, review_text, created_at,
@@ -98,6 +136,12 @@ exports.submitReview = async (req, res, next) => {
         consentTokenHash,
       ]
     );
+
+    if (templateId) {
+      await consumeTemplateAfterUse(pool, businessId, templateId, reviewText);
+    }
+
+    await pool.query('COMMIT');
     const frontendUrl = resolveFrontendUrl(req);
 
     res.status(201).json({
@@ -108,6 +152,7 @@ exports.submitReview = async (req, res, next) => {
       consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });
   } catch (err) {
+    try { await pool.query('ROLLBACK'); } catch (e) { /* ignore */ }
     next(err);
   }
 };
@@ -216,7 +261,6 @@ exports.revokeConsentByToken = async (req, res, next) => {
 };
 
 // Mark a template as used, archive the edited text, rotate in a backup, and trigger generation when needed
-const generationService = require('../services/generationService');
 
 exports.markTemplateAsUsed = async (req, res, next) => {
   const pool = req.db;
@@ -242,35 +286,7 @@ exports.markTemplateAsUsed = async (req, res, next) => {
       return res.status(404).json({ message: 'Template not found' });
     }
 
-    // 1) archive the edited text (user-provided)
-    await pool.query('INSERT INTO archived_templates (business_id, text, archived_at) VALUES ($1, $2, NOW())', [businessId, modifiedText]);
-
-    // 2) attempt to select one backup to promote (we will insert replacement first to maintain count atomically)
-    const next = await pool.query('SELECT * FROM backup_templates WHERE business_id = $1 ORDER BY created_at ASC LIMIT 1 FOR UPDATE', [businessId]);
-    let replaced = false;
-    if (next.rowCount > 0) {
-      const nextRow = next.rows[0];
-      // insert backup into active pool BEFORE removing the active template so the DB never has <10 active after commit
-      await pool.query('INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())', [businessId, nextRow.text]);
-      // delete the backup row we just promoted
-      await pool.query('DELETE FROM backup_templates WHERE id = $1 AND business_id = $2', [nextRow.id, businessId]);
-      // now remove the original active template
-      await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [id, businessId]);
-      replaced = true;
-    } else {
-      // backup empty: insert a safe fallback template so UI never sees <10 active
-      const fallback = 'Thank you for visiting — we appreciate your feedback.';
-      await pool.query('INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())', [businessId, fallback]);
-      // remove the original active template after inserting fallback
-      await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [id, businessId]);
-      replaced = false;
-      // schedule an urgent background generation to refill backups
-      setImmediate(() => {
-        generationService.generateFromArchived(pool, businessId)
-          .then(() => console.info('generationService: urgent refill triggered'))
-          .catch(err => console.error('generationService urgent refill error:', err && err.stack ? err.stack : err));
-      });
-    }
+    const { replaced } = await consumeTemplateAfterUse(pool, businessId, id, modifiedText);
 
     await pool.query('COMMIT');
 

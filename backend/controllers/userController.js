@@ -1,5 +1,6 @@
 const { getAdminPool } = require('../tenantManager');
 const { BUSINESS_CATEGORIES } = require('../services/onboardingGenerationService');
+const { isBillingBypassUser, applyBillingBypassShape } = require('../lib/billingBypass');
 const VALID_SIGNUP_PLANS = new Set(['Starter', 'Pro', 'Pro Max']);
 
 function parsePreferredBusinessId(raw) {
@@ -33,7 +34,10 @@ exports.getMe = async (req, res, next) => {
       [userId, user.email || null]
     );
 
-    const businesses = await listOwnedBusinesses(pool, userId);
+    const bypassBilling = isBillingBypassUser(user);
+    const businesses = (await listOwnedBusinesses(pool, userId)).map((b) =>
+      applyBillingBypassShape(b, bypassBilling)
+    );
     const preferredBusinessId = parsePreferredBusinessId(req.query && req.query.businessId);
     const defaultBusinessId = (
       preferredBusinessId && businesses.some((b) => Number(b.id) === preferredBusinessId)
@@ -70,6 +74,7 @@ exports.onboard = async (req, res, next) => {
     } = req.body || {};
     const preferredBusinessId = parsePreferredBusinessId(req.body && req.body.businessId);
     const requestedPlan = String(selected_plan || 'Starter').trim();
+    const bypassBilling = isBillingBypassUser(user);
     if (!VALID_SIGNUP_PLANS.has(requestedPlan)) {
       return res.status(400).json({ error: 'selected_plan must be one of: Starter, Pro, Pro Max' });
     }
@@ -81,7 +86,9 @@ exports.onboard = async (req, res, next) => {
     );
 
     // If user already owns business(es), return an existing one instead of creating another.
-    const ownedBusinesses = await listOwnedBusinesses(pool, userId);
+    const ownedBusinesses = (await listOwnedBusinesses(pool, userId)).map((b) =>
+      applyBillingBypassShape(b, bypassBilling)
+    );
     if (ownedBusinesses.length > 0) {
       const selected = (
         preferredBusinessId && ownedBusinesses.some((b) => Number(b.id) === preferredBusinessId)
@@ -114,6 +121,9 @@ exports.onboard = async (req, res, next) => {
     // Plan is only activated after webhook confirmation.
     // New signups start in pending billing state.
     const actualPlan = 'Starter';
+    const billingRequired = !bypassBilling;
+    const billingStatus = bypassBilling ? 'active' : 'pending';
+    const pendingPlan = bypassBilling ? null : requestedPlan;
     
     const insert = await pool.query(
       `INSERT INTO businesses (
@@ -131,9 +141,9 @@ exports.onboard = async (req, res, next) => {
         business_type || null,
         business_category || null,
         actualPlan,
-        true,
-        'pending',
-        requestedPlan,
+        billingRequired,
+        billingStatus,
+        pendingPlan,
       ]
     );
     const businessId = insert.rows[0].id;
@@ -147,16 +157,16 @@ exports.onboard = async (req, res, next) => {
       name: insert.rows[0].name, 
       plan: actualPlan,
       billingRequired: Boolean(insert.rows[0].billing_required),
-      billingStatus: String(insert.rows[0].billing_status || 'pending'),
-      pendingPlan: insert.rows[0].pending_plan || requestedPlan,
+      billingStatus: String(insert.rows[0].billing_status || (bypassBilling ? 'active' : 'pending')),
+      pendingPlan: insert.rows[0].pending_plan || (bypassBilling ? null : requestedPlan),
       trialEndsAt: insert.rows[0].trial_ends_at || null,
       businesses: [{
         id: businessId,
         name: insert.rows[0].name,
         plan: actualPlan,
-        billing_required: true,
-        billing_status: 'pending',
-        pending_plan: requestedPlan,
+        billing_required: billingRequired,
+        billing_status: billingStatus,
+        pending_plan: pendingPlan,
         trial_ends_at: null,
         role: 'owner',
       }],

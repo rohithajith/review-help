@@ -104,12 +104,21 @@ jest.mock('../tenantManager', () => {
             return { rows: [{ id }], rowCount: 1 };
           }
 
-          if (statement.includes('FROM BUSINESSES B JOIN BUSINESS_OWNERS BO ON BO.BUSINESS_ID = B.ID WHERE BO.USER_ID = $1')) {
+          if (
+            statement.includes('FROM BUSINESSES B JOIN BUSINESS_OWNERS BO ON BO.BUSINESS_ID = B.ID WHERE BO.USER_ID = $1')
+            || statement.includes('FROM BUSINESS_OWNERS BO JOIN BUSINESSES B ON BO.BUSINESS_ID = B.ID WHERE BO.USER_ID = $1')
+          ) {
             const userId = String(params[0]);
+            const ownedRows = businessOwners
+              .filter((r) => String(r.user_id) === userId);
             const ownedIds = new Set(
+              ownedRows
+                .map((r) => Number(r.business_id))
+            );
+            const roleByBusiness = new Map(
               businessOwners
                 .filter((r) => String(r.user_id) === userId)
-                .map((r) => Number(r.business_id))
+                .map((r) => [Number(r.business_id), r.role || 'owner'])
             );
             const rows = adminBusinesses
               .filter((b) => ownedIds.has(Number(b.id)))
@@ -122,6 +131,7 @@ jest.mock('../tenantManager', () => {
                 review_platforms: b.review_platforms,
                 plan: b.plan,
                 created_at: b.created_at,
+                role: roleByBusiness.get(Number(b.id)) || 'owner',
               }));
             return { rows, rowCount: rows.length };
           }
@@ -182,6 +192,22 @@ describe('Integration: backend API (mocked tenant manager + auth)', () => {
   test('GET /api/businesses requires auth', async () => {
     const res = await request(app).get('/api/businesses');
     expect(res.status).toBe(401);
+  });
+
+  test('GET /api/users/me requires auth', async () => {
+    const res = await request(app).get('/api/users/me');
+    expect(res.status).toBe(401);
+  });
+
+  test('GET /api/users/me returns user context and owned businesses', async () => {
+    const res = await request(app).get('/api/users/me').set(authHeader);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('user');
+    expect(res.body.user).toMatchObject({ id: 'user-1', email: 'owner1@example.com' });
+    expect(Array.isArray(res.body.businesses)).toBe(true);
+    expect(res.body.businesses.length).toBeGreaterThanOrEqual(1);
+    expect(res.body).toHaveProperty('defaultBusinessId');
+    expect(typeof res.body.defaultBusinessId).toBe('number');
   });
 
   test('GET /api/businesses returns businesses for the authenticated owner', async () => {
