@@ -146,4 +146,51 @@ describe('review consent flow', () => {
       alreadyRevoked: true,
     }));
   });
+
+  test('revokeReviewByToken deletes mapped review', async () => {
+    const pool = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 88, business_id: 2 }] })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 88, business_id: 2 }] }),
+    };
+    getAdminPool.mockReturnValue(pool);
+
+    const req = { body: { token: 'revoke-e8am9le' } };
+    const res = makeRes();
+    const next = jest.fn();
+
+    await templatesController.revokeReviewByToken(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Review removed successfully',
+      removed: true,
+      reviewId: 88,
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('updateReviewMetadata marks review as skipped', async () => {
+    const dbQuery = jest.fn().mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ id: 91, post_submit_metadata: { platformAction: 'skipped' } }],
+    });
+
+    const req = {
+      db: { query: dbQuery },
+      businessId: '2',
+      params: { id: '91' },
+      body: { platformAction: 'skipped' },
+    };
+    const res = makeRes();
+    const next = jest.fn();
+
+    await templatesController.updateReviewMetadata(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Review metadata updated',
+      reviewId: 91,
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
 });

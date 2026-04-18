@@ -9,8 +9,15 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 // Public consent revocation endpoint using secure token
 router.post(
   '/consent/revoke',
-  [body('token').isString().trim().isLength({ min: 16 })],
+  [body('token').isString().trim().isLength({ min: 10 })],
   asyncHandler(templatesController.revokeConsentByToken)
+);
+
+// Public review deletion endpoint using revoke token
+router.post(
+  '/revoke',
+  [body('token').isString().trim().isLength({ min: 10 })],
+  asyncHandler(templatesController.revokeReviewByToken)
 );
 
 module.exports = router;

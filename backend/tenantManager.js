@@ -3,6 +3,7 @@ const dns = require('dns');
 
 // Force IPv4 for DNS resolution (fixes GCP IPv6 connectivity issues with Supabase)
 dns.setDefaultResultOrder('ipv4first');
+const LEGACY_FALLBACK_TEMPLATE_TEXT = 'Thank you for visiting — we appreciate your feedback.';
 
 /**
  * Supabase-first Tenant Manager
@@ -202,9 +203,22 @@ async function ensureAdminSchema() {
   await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_revoked_at TIMESTAMP`);
   await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_token_hash TEXT`);
   await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS consent_token TEXT`);
+  await pool.query(`ALTER TABLE customer_reviews ADD COLUMN IF NOT EXISTS post_submit_metadata JSONB DEFAULT '{}'::jsonb`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_customer_reviews_business_id ON customer_reviews(business_id)`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_reviews_consent_token_hash ON customer_reviews(consent_token_hash) WHERE consent_token_hash IS NOT NULL`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_reviews_consent_token ON customer_reviews(consent_token) WHERE consent_token IS NOT NULL`);
+
+  // Remove previously auto-inserted fallback phrase from template pools.
+  await pool.query(
+    `DELETE FROM review_templates
+     WHERE lower(trim(text)) = lower(trim($1))`,
+    [LEGACY_FALLBACK_TEMPLATE_TEXT]
+  );
+  await pool.query(
+    `DELETE FROM backup_templates
+     WHERE lower(trim(text)) = lower(trim($1))`,
+    [LEGACY_FALLBACK_TEMPLATE_TEXT]
+  );
 
   // Users table for business owners (Supabase auth users are referenced by UUID)
   await pool.query(`

@@ -151,9 +151,9 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}   Review App is running!${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "  ${GREEN}Frontend:${NC}     http://localhost:${FRONTEND_PORT}/"
-echo -e "  ${GREEN}Admin:${NC}        http://localhost:${FRONTEND_PORT}/#/admin"
-echo -e "  ${GREEN}Backend API:${NC}  http://localhost:${BACKEND_PORT}/api"
+echo -e "  ${GREEN}Frontend Login:${NC} http://localhost:${FRONTEND_PORT}/#/login"
+echo -e "  ${GREEN}Admin:${NC}         http://localhost:${FRONTEND_PORT}/#/admin"
+echo -e "  ${GREEN}Backend API:${NC}   http://localhost:${BACKEND_PORT}/api"
 echo ""
 echo -e "  ${YELLOW}Logs:${NC}"
 echo "    Backend:  tail -f /tmp/review-backend.log"
@@ -167,15 +167,13 @@ echo ""
 if command -v xdg-open &> /dev/null; then
     echo "Opening browser..."
     sleep 2
-    xdg-open "http://localhost:${FRONTEND_PORT}/#/admin" 2>/dev/null || true
-    xdg-open "http://localhost:${FRONTEND_PORT}/" 2>/dev/null || true
+    xdg-open "http://localhost:${FRONTEND_PORT}/#/login" 2>/dev/null || true
 elif command -v open &> /dev/null; then
     echo "Opening browser..."
     sleep 2
-    open "http://localhost:${FRONTEND_PORT}/#/admin" 2>/dev/null || true
-    open "http://localhost:${FRONTEND_PORT}/" 2>/dev/null || true
+    open "http://localhost:${FRONTEND_PORT}/#/login" 2>/dev/null || true
 else
-    echo -e "${YELLOW}Note: Open the URLs above manually in your browser${NC}"
+    echo -e "${YELLOW}Note: Open the login URL above manually in your browser${NC}"
 fi
 
 echo -e "${GREEN}Done!${NC}"

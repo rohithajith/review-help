@@ -14,8 +14,8 @@ if (!fetchFn) {
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'openai/gpt-4o-mini';
-const FALLBACK_MODEL = 'google/gemma-3-27b-it:free';
+const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || 'google/gemma-3-27b-it:free';
 
 const FTC_CONSTRAINTS = `
 Hard constraints (must follow):

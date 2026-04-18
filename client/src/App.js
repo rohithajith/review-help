@@ -59,6 +59,7 @@ const businessLogos = {
 };
 
 const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke token.';
+const LEGACY_FALLBACK_TEMPLATE_TEXT = 'Thank you for visiting — we appreciate your feedback.';
 const COMPOSE_QUESTIONS = [
   { key: 'stay_purpose', label: 'What was the purpose of your stay?', placeholder: 'Business trip, family vacation, weekend break, etc.' },
   { key: 'room_cleanliness', label: 'How was the room cleanliness and comfort?', placeholder: 'Mention what stood out, if anything.' },
@@ -86,20 +87,20 @@ function BusinessTemplatePage() {
   });
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [ownReviewText, setOwnReviewText] = useState('');
-  const [templateReviewText, setTemplateReviewText] = useState('');
   const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [copyToast, setCopyToast] = useState('');
   const [showChannelPopup, setShowChannelPopup] = useState(false);
   const [showExternalOptions, setShowExternalOptions] = useState(true);
   const [lastSavedReview, setLastSavedReview] = useState('');
+  const [lastSavedReviewId, setLastSavedReviewId] = useState(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [revokeAvailable, setRevokeAvailable] = useState(false);
   const [revokeToken, setRevokeToken] = useState('');
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateEditorText, setTemplateEditorText] = useState('');
   const [showTemplateAssist, setShowTemplateAssist] = useState(false);
+  const [busyThanksVisible, setBusyThanksVisible] = useState(false);
   const [showPermissionPopup, setShowPermissionPopup] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [showComposeModal, setShowComposeModal] = useState(false);
@@ -194,15 +195,22 @@ function BusinessTemplatePage() {
     };
   }, [fetchBusinessDetails, normalizedBusinessId, refresh]);
 
+  const visibleTemplates = useMemo(
+    () => (Array.isArray(templates)
+      ? templates.filter((t) => String(t?.text || '').trim().toLowerCase() !== LEGACY_FALLBACK_TEMPLATE_TEXT.toLowerCase())
+      : []),
+    [templates]
+  );
+
   useEffect(() => {
-    if (!Array.isArray(templates) || templates.length === 0) {
+    if (!Array.isArray(visibleTemplates) || visibleTemplates.length === 0) {
       setSelectedTemplateId(null);
       return;
     }
-    if (selectedTemplateId && !templates.some((t) => t.id === selectedTemplateId)) {
+    if (selectedTemplateId && !visibleTemplates.some((t) => t.id === selectedTemplateId)) {
       setSelectedTemplateId(null);
     }
-  }, [templates, selectedTemplateId]);
+  }, [visibleTemplates, selectedTemplateId]);
 
   const handleSelectTemplate = (template) => {
     if (!consentAccepted) {
@@ -237,13 +245,12 @@ function BusinessTemplatePage() {
   const handleUseEditedTemplate = async () => {
     const editedText = String(templateEditorText || '').trim();
     if (!editedText || !selectedTemplateId) return;
-    setTemplateReviewText(editedText);
     setShowTemplateEditor(false);
     await submitReviewAndOpenChannels({
       text: editedText,
       templateId: selectedTemplateId,
       requireConsent: true,
-      suppressChannelPopup: false,
+      suppressChannelPopup: true,
       showExternalOptions: false,
     });
   };
@@ -300,11 +307,23 @@ function BusinessTemplatePage() {
 
       const response = await api.post(`/${businessId}/reviews`, requestBody);
       const savedRevokeToken = String(response?.data?.revokeToken || '').trim();
+      try {
+        if (window.isSecureContext && navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text.trim());
+        }
+      } catch (_e) {
+        // Ignore clipboard permission/runtime errors.
+      }
       setLastSavedReview(text.trim());
+      setLastSavedReviewId(response?.data?.review?.id || null);
       setRevokeToken(savedRevokeToken);
       setRevokeAvailable(Boolean(response?.data?.revokeAvailable) || Boolean(savedRevokeToken));
       setShowExternalOptions(nextShowExternalOptions);
       setSuccessMessage('Review submitted.');
+      if (Number.isInteger(templateId) && templateId > 0) {
+        setShowTemplateAssist(false);
+        setBusyThanksVisible(true);
+      }
       if (suppressChannelPopup) {
         setShowChannelPopup(false);
       } else if (autoOpenChannel) {
@@ -426,18 +445,31 @@ function BusinessTemplatePage() {
   };
 
   const handlePostToChannel = async (channelName) => {
-    await openChannelWithText(channelName, lastSavedReview || ownReviewText || templateReviewText || '');
+    if (lastSavedReviewId) {
+      try {
+        await api.post(`/${businessId}/reviews/${lastSavedReviewId}/metadata`, {
+          platformAction: 'platform_clicked',
+          platformName: channelName,
+        });
+      } catch (_e) {
+        // Non-blocking metadata update.
+      }
+    }
+    await openChannelWithText(channelName, lastSavedReview || ownReviewText || '');
     setShowChannelPopup(false);
   };
 
-  const handleCopyRevokeToken = async () => {
-    if (!revokeToken) return;
-    try {
-      await navigator.clipboard.writeText(revokeToken);
-      setCopyToast('Revoke token copied');
-    } catch (e) {
-      setCopyToast('Could not copy revoke token');
+  const handleSkipPostSubmitPlatforms = async () => {
+    if (lastSavedReviewId) {
+      try {
+        await api.post(`/${businessId}/reviews/${lastSavedReviewId}/metadata`, {
+          platformAction: 'skipped',
+        });
+      } catch (_e) {
+        // Non-blocking metadata update.
+      }
     }
+    setShowChannelPopup(false);
   };
 
   // Loading state
@@ -541,28 +573,6 @@ function BusinessTemplatePage() {
             {successMessage}
           </Alert>
         </Snackbar>
-        <Snackbar
-          open={!!copyToast}
-          autoHideDuration={2200}
-          onClose={() => setCopyToast('')}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <Box
-            sx={{
-              bgcolor: 'rgba(55, 65, 81, 0.95)',
-              color: '#fff',
-              px: 2,
-              py: 1,
-              borderRadius: 999,
-              fontSize: 14,
-              fontWeight: 500,
-              boxShadow: '0 8px 22px rgba(15, 23, 42, 0.35)',
-            }}
-          >
-            {copyToast}
-          </Box>
-        </Snackbar>
-
         <Paper
           elevation={0}
           sx={{
@@ -712,12 +722,31 @@ function BusinessTemplatePage() {
           <Button
             variant={showTemplateAssist ? 'contained' : 'outlined'}
             onClick={() => {
-              setShowTemplateAssist(true);
+              setShowTemplateAssist((prev) => {
+                const next = !prev;
+                if (next) setBusyThanksVisible(false);
+                return next;
+              });
             }}
             sx={{ mb: showTemplateAssist ? 2.5 : 1 }}
           >
             I&apos;m busy
           </Button>
+
+          {!showTemplateAssist && busyThanksVisible && (
+            <Alert
+              severity="success"
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                backgroundColor: 'rgba(236, 253, 245, 0.9)',
+                color: '#065f46',
+              }}
+            >
+              Thank you for Feedback
+            </Alert>
+          )}
 
           {showTemplateAssist && (
             <>
@@ -733,9 +762,9 @@ function BusinessTemplatePage() {
                 />
               </Stack>
 
-              {templates.length > 1 ? (
+              {visibleTemplates.length > 1 ? (
                 <Grid container spacing={1.5}>
-                  {templates.map((template) => (
+                  {visibleTemplates.map((template) => (
                     <Grid item xs={12} md={6} key={template.id}>
                       <Card
                         sx={{
@@ -767,20 +796,7 @@ function BusinessTemplatePage() {
                 <Card sx={{ borderRadius: 2.5, opacity: 1, border: '1px solid rgba(203, 213, 225, 0.95)', boxShadow: '0 6px 14px rgba(15, 23, 42, 0.05)' }}>
                   <CardContent sx={{ p: 2 }}>
                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.55 }}>
-                      {templates[0]?.text || 'No templates available'}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              )}
-
-              {!!templateReviewText.trim() && (
-                <Card sx={{ borderRadius: 2.5, border: '1px solid rgba(16, 185, 129, 0.4)', boxShadow: '0 8px 16px rgba(5, 150, 105, 0.12)', mt: 1.5 }}>
-                  <CardContent sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: '#065f46', fontWeight: 700, mb: 0.5 }}>
-                      Template Review Draft
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155', lineHeight: 1.55 }}>
-                      {templateReviewText}
+                      {visibleTemplates[0]?.text || 'No templates available'}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -795,60 +811,80 @@ function BusinessTemplatePage() {
         </Paper>
 
         <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Thank you for your valuable review</DialogTitle>
-          <DialogContent>
-            {showExternalOptions && (
-              <Stack direction="column" spacing={1} sx={{ mb: 2, alignItems: 'center' }}>
-                {sharePlatforms.map((platformName) => (
-                  <Button
-                    key={platformName}
-                    size="medium"
-                    variant="contained"
-                    onClick={() => handlePostToChannel(platformName)}
-                    sx={{
-                      py: 0.9,
-                      width: 240,
-                      borderRadius: 1.5,
-                      px: 2,
-                    }}
-                  >
-                    <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
-                      <OpenInNewIcon fontSize="small" />
-                      <Box component="span" sx={{ textAlign: 'left' }}>{platformName}</Box>
-                    </Box>
-                  </Button>
-                ))}
-              </Stack>
+          <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+            Thank you for your valuable review
+          </DialogTitle>
+          <DialogContent sx={{ pt: 0.5 }}>
+            {showExternalOptions ? (
+              <>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Please choose a platform below to share it:
+                </Typography>
+                <Stack direction="column" spacing={1} sx={{ mb: 2.5, width: '100%', maxWidth: 320 }}>
+                  {sharePlatforms.map((platformName) => (
+                    <Button
+                      key={platformName}
+                      size="medium"
+                      variant="contained"
+                      onClick={() => handlePostToChannel(platformName)}
+                      sx={{
+                        py: 1,
+                        width: '100%',
+                        borderRadius: 2,
+                        px: 2,
+                        justifyContent: 'flex-start',
+                      }}
+                    >
+                      <Box sx={{ width: '100%', display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', columnGap: 1 }}>
+                        <OpenInNewIcon fontSize="small" />
+                        <Box component="span" sx={{ textAlign: 'left' }}>{platformName}</Box>
+                      </Box>
+                    </Button>
+                  ))}
+                </Stack>
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Your review has been saved in the app.
+              </Typography>
             )}
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {showExternalOptions
-                ? 'Please choose a platform below to share it:'
-                : 'Your review has been saved in the app.'}
-            </Typography>
             {revokeAvailable && revokeToken && (
-              <Box sx={{ mt: 1 }}>
-                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1 }}>
+              <Box
+                sx={{
+                  mt: 0.5,
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(248, 250, 252, 0.8)',
+                  p: 1.5,
+                }}
+              >
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.75 }}>
                   Save this token if you may want to withdraw consent later.
                 </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', mb: 1 }}>
+                <Typography
+                  component="div"
+                  sx={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    mb: 0.75,
+                    wordBreak: 'break-word',
+                  }}
+                >
                   {revokeToken}
                 </Typography>
-                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
                   To remove your review go to app.reviewhelp.uk/revoke and paste your token.
                 </Typography>
-                <Button variant="outlined" size="small" onClick={handleCopyRevokeToken}>
-                  Copy Token
-                </Button>
               </Box>
             )}
           </DialogContent>
-          <DialogActions sx={{ p: 2, pt: 0, flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+          <DialogActions sx={{ p: 2, pt: 1, justifyContent: 'center' }}>
             {showExternalOptions ? (
-              <>
-                <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
-                  Skip
-                </Button>
-              </>
+              <Button variant="text" size="medium" onClick={handleSkipPostSubmitPlatforms}>
+                Skip
+              </Button>
             ) : (
               <Button variant="text" size="medium" onClick={() => setShowChannelPopup(false)}>
                 Close
@@ -1046,6 +1082,72 @@ function RevokeConsentPage() {
   );
 }
 
+function RevokeReviewPage() {
+  const location = useLocation();
+  const [token, setToken] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    setToken(String(params.get('token') || '').trim());
+  }, [location.search]);
+
+  const handleRevokeReview = async () => {
+    if (!token) {
+      setError('Please enter your revoke token');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await api.post('/reviews/revoke', { token });
+      setResult(res.data || { message: 'Review removed successfully' });
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not remove your review with this token');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+      <Container maxWidth="sm">
+        <Card sx={{ borderRadius: 2.5, border: '1px solid rgba(148, 163, 184, 0.3)' }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 1.2, fontWeight: 700 }}>
+              Remove Your Review
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Paste your revoke token to permanently remove your submitted review.
+            </Typography>
+            {result ? (
+              <Alert severity="success">{result.message || 'Review removed successfully'}</Alert>
+            ) : (
+              <>
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Revoke token"
+                  placeholder="revoke-e8am9le"
+                  value={token}
+                  onChange={(e) => setToken(String(e.target.value || '').trim())}
+                  sx={{ mb: 2 }}
+                />
+                <Button variant="contained" color="error" onClick={handleRevokeReview} disabled={submitting || !token}>
+                  {submitting ? 'Removing...' : 'Remove Review'}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </Container>
+    </Box>
+  );
+}
+
 // =============================================================================
 // Business Admin Page Wrapper
 // =============================================================================
@@ -1133,7 +1235,7 @@ function AppLayout() {
         <Route path="/payment-pending" element={<PaymentPending />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/reviews/revoke-consent" element={<RevokeConsentPage />} />
-        <Route path="/revoke" element={<RevokeConsentPage />} />
+        <Route path="/revoke" element={<RevokeReviewPage />} />
         {/* Business-specific template page - give this URL to customers */}
         {/* Example: http://localhost:3000/#/business/2 for Myra's Fish Bar */}
         <Route path="/business/:businessId" element={<BusinessTemplatePage />} />

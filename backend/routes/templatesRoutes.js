@@ -45,6 +45,17 @@ router.post(
   asyncHandler(templatesController.submitReview)
 );
 
+router.post(
+  '/reviews/:id/metadata',
+  publicWriteLimiter,
+  [
+    param('id').isInt({ gt: 0 }),
+    body('platformAction').isString().trim().isIn(['skipped', 'platform_clicked']),
+    body('platformName').optional().isString().trim().isLength({ min: 1, max: 100 }),
+  ],
+  asyncHandler(templatesController.updateReviewMetadata)
+);
+
 // Get all in-app reviews for My Reviews (owner-only)
 router.get('/reviews', ...ownerWithBilling, asyncHandler(templatesController.getMyReviews));
 

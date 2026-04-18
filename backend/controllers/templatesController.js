@@ -6,6 +6,7 @@ const reviewAssistService = require('../services/reviewAssistService');
 const CONSENT_STATEMENT_VERSION = 'v1';
 const CONSENT_STATEMENT_TEXT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke link.';
 const generationService = require('../services/generationService');
+const LEGACY_FALLBACK_TEMPLATE_TEXT = 'Thank you for visiting — we appreciate your feedback.';
 
 function hashConsentToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -62,11 +63,7 @@ async function consumeTemplateAfterUse(pool, businessId, templateId, archivedTex
     await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [templateId, businessId]);
     replaced = true;
   } else {
-    const fallback = 'Thank you for visiting — we appreciate your feedback.';
-    await pool.query(
-      'INSERT INTO review_templates (business_id, text, used, created_at) VALUES ($1, $2, false, NOW())',
-      [businessId, fallback]
-    );
+    // No backup available: remove used template and trigger async refill generation.
     await pool.query('DELETE FROM review_templates WHERE id = $1 AND business_id = $2', [templateId, businessId]);
     setImmediate(() => {
       generationService.generateFromArchived(pool, businessId)
@@ -83,7 +80,15 @@ exports.getActiveTemplates = async (req, res, next) => {
   const pool = req.db;
   const businessId = req.businessId;
   try {
-    const { rows } = await pool.query('SELECT * FROM review_templates WHERE used = false AND business_id = $1 ORDER BY created_at DESC', [businessId]);
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM review_templates
+       WHERE used = false
+         AND business_id = $1
+         AND lower(trim(text)) <> lower(trim($2))
+       ORDER BY created_at DESC`,
+      [businessId, LEGACY_FALLBACK_TEMPLATE_TEXT]
+    );
     res.json(rows);
   } catch (err) {
     next(err);
@@ -125,10 +130,10 @@ exports.submitReview = async (req, res, next) => {
     const inserted = await pool.query(
       `INSERT INTO customer_reviews (
         business_id, template_id, rating, review_text, created_at,
-        consent_granted, consent_granted_at, consent_statement_version, consent_statement_text, consent_token_hash, consent_token
+        consent_granted, consent_granted_at, consent_statement_version, consent_statement_text, consent_token_hash, consent_token, post_submit_metadata
       )
-      VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10)
-      RETURNING id, business_id, template_id, rating, review_text, created_at, consent_granted, consent_granted_at, consent_revoked_at`,
+      VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11::jsonb)
+      RETURNING id, business_id, template_id, rating, review_text, created_at, consent_granted, consent_granted_at, consent_revoked_at, post_submit_metadata`,
       [
         businessId,
         templateId,
@@ -140,6 +145,7 @@ exports.submitReview = async (req, res, next) => {
         consentAccepted ? CONSENT_STATEMENT_TEXT : null,
         consentTokenHash,
         revokeToken,
+        JSON.stringify({ platformAction: 'pending' }),
       ]
     );
 
@@ -158,6 +164,48 @@ exports.submitReview = async (req, res, next) => {
     });
   } catch (err) {
     try { await pool.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    next(err);
+  }
+};
+
+// Update post-submit metadata for a public review flow action (e.g. platform skip)
+exports.updateReviewMetadata = async (req, res, next) => {
+  const pool = req.db;
+  const businessId = req.businessId;
+  const id = Number(req.params.id);
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const platformAction = String(req.body.platformAction || '').trim().toLowerCase();
+  if (!platformAction) {
+    return res.status(400).json({ message: 'platformAction is required' });
+  }
+
+  const metadata = {
+    platformAction,
+    platformActionAt: new Date().toISOString(),
+  };
+  if (platformAction === 'platform_clicked') {
+    metadata.platformName = String(req.body.platformName || '').trim() || null;
+  }
+
+  try {
+    const updated = await pool.query(
+      `UPDATE customer_reviews
+       SET post_submit_metadata = COALESCE(post_submit_metadata, '{}'::jsonb) || $1::jsonb
+       WHERE id = $2 AND business_id = $3
+       RETURNING id, post_submit_metadata`,
+      [JSON.stringify(metadata), id, businessId]
+    );
+    if (updated.rowCount === 0) {
+      return res.status(404).json({ message: 'Review not found' });
+    }
+    return res.json({
+      message: 'Review metadata updated',
+      reviewId: updated.rows[0].id,
+      metadata: updated.rows[0].post_submit_metadata,
+    });
+  } catch (err) {
     next(err);
   }
 };
@@ -267,6 +315,47 @@ exports.revokeConsentByToken = async (req, res, next) => {
       alreadyRevoked: false,
       reviewId: updated.rows[0].id,
       revokedAt: updated.rows[0].consent_revoked_at,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Remove an in-app review by revoke token (public)
+exports.revokeReviewByToken = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const token = String(req.body.token || '').trim();
+  if (!token) return res.status(400).json({ message: 'token is required' });
+
+  try {
+    const pool = getAdminPool();
+    const tokenHash = hashConsentToken(token);
+    let existing = await pool.query(
+      'SELECT id, business_id FROM customer_reviews WHERE consent_token = $1 LIMIT 1',
+      [token]
+    );
+    if (existing.rowCount === 0) {
+      existing = await pool.query(
+        'SELECT id, business_id FROM customer_reviews WHERE consent_token_hash = $1 LIMIT 1',
+        [tokenHash]
+      );
+    }
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ message: 'Invalid or expired revoke token' });
+    }
+
+    const removed = await pool.query(
+      'DELETE FROM customer_reviews WHERE id = $1 RETURNING id, business_id',
+      [existing.rows[0].id]
+    );
+
+    return res.json({
+      message: 'Review removed successfully',
+      removed: true,
+      reviewId: removed.rows[0].id,
+      businessId: removed.rows[0].business_id,
     });
   } catch (err) {
     next(err);
