@@ -94,6 +94,7 @@ async function ensureAdminSchema() {
       logo_url TEXT,
       welcome_message TEXT,
       review_platforms JSONB DEFAULT '[{"name": "Google", "url": ""}, {"name": "Booking.com", "url": ""}]'::jsonb,
+      compose_questions JSONB,
       plan TEXT DEFAULT 'Starter',
       stripe_customer_id TEXT,
       stripe_subscription_id TEXT,
@@ -113,6 +114,9 @@ async function ensureAdminSchema() {
     BEGIN 
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'review_platforms') THEN
         ALTER TABLE businesses ADD COLUMN review_platforms JSONB DEFAULT '[{"name": "Google", "url": ""}, {"name": "Booking.com", "url": ""}]'::jsonb;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'compose_questions') THEN
+        ALTER TABLE businesses ADD COLUMN compose_questions JSONB;
       END IF;
     END $$;
   `);

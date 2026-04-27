@@ -60,6 +60,13 @@ router.post(
 router.get('/reviews', ...ownerWithBilling, asyncHandler(templatesController.getMyReviews));
 
 // Compose review from guided Q&A answers (public)
+router.get(
+  '/reviews/compose/questions',
+  publicAiLimiter,
+  asyncHandler(templatesController.getComposeQuestions)
+);
+
+// Compose review from guided Q&A answers (public)
 router.post(
   '/reviews/compose',
   publicAiLimiter,

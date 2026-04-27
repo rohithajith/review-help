@@ -1,4 +1,5 @@
 const { getAdminPool } = require('../tenantManager');
+const { sanitizeComposeQuestions } = require('../services/reviewAssistService');
 
 /**
  * Business Controller for Supabase Shared DB
@@ -57,7 +58,7 @@ exports.listBusinesses = async (req, res, next) => {
     }
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      `SELECT b.id, b.name, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, b.plan,
+      `SELECT b.id, b.name, b.google_review_url, b.logo_url, b.welcome_message, b.review_platforms, b.compose_questions, b.plan,
               b.billing_required, b.billing_status, b.pending_plan, b.trial_ends_at, b.created_at
        FROM businesses b
        JOIN business_owners bo ON bo.business_id = b.id
@@ -76,7 +77,7 @@ exports.getBusiness = async (req, res, next) => {
   try {
     const pool = getAdminPool();
     const { rows } = await pool.query(
-      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, plan FROM businesses WHERE id = $1',
+      'SELECT id, name, google_review_url, logo_url, welcome_message, review_platforms, compose_questions, plan FROM businesses WHERE id = $1',
       [businessId]
     );
     if (rows.length === 0) {
@@ -90,7 +91,7 @@ exports.getBusiness = async (req, res, next) => {
 
 exports.updateBusiness = async (req, res, next) => {
   const businessId = req.businessId || req.params.businessId;
-  const { name, google_review_url, logo_url, welcome_message, review_platforms } = req.body;
+  const { name, google_review_url, logo_url, welcome_message, review_platforms, compose_questions } = req.body;
   
   try {
     const pool = getAdminPool();
@@ -119,6 +120,16 @@ exports.updateBusiness = async (req, res, next) => {
     if (review_platforms !== undefined) {
       updates.push(`review_platforms = $${paramCount++}`);
       values.push(JSON.stringify(review_platforms));
+    }
+    if (compose_questions !== undefined) {
+      let sanitizedComposeQuestions;
+      try {
+        sanitizedComposeQuestions = sanitizeComposeQuestions(compose_questions, { strict: true });
+      } catch (validationErr) {
+        return res.status(400).json({ error: validationErr.message || 'Invalid compose_questions payload' });
+      }
+      updates.push(`compose_questions = $${paramCount++}`);
+      values.push(JSON.stringify(sanitizedComposeQuestions));
     }
     
     if (updates.length === 0) {

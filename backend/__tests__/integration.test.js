@@ -28,6 +28,7 @@ jest.mock('../tenantManager', () => {
       logo_url: '',
       welcome_message: "Welcome to Joe's",
       review_platforms: [{ name: 'Google', url: '' }],
+      compose_questions: null,
       plan: 'Starter',
       created_at: new Date().toISOString(),
     },
@@ -38,6 +39,7 @@ jest.mock('../tenantManager', () => {
       logo_url: '',
       welcome_message: 'Welcome to Glam',
       review_platforms: [{ name: 'Google', url: '' }],
+      compose_questions: null,
       plan: 'Starter',
       created_at: new Date().toISOString(),
     },
@@ -98,6 +100,7 @@ jest.mock('../tenantManager', () => {
               logo_url: logoUrl || null,
               welcome_message: welcomeMessage || null,
               review_platforms: [{ name: 'Google', url: '' }],
+              compose_questions: null,
               plan: 'Starter',
               created_at: new Date().toISOString(),
             });
@@ -129,6 +132,7 @@ jest.mock('../tenantManager', () => {
                 logo_url: b.logo_url,
                 welcome_message: b.welcome_message,
                 review_platforms: b.review_platforms,
+                compose_questions: b.compose_questions || null,
                 plan: b.plan,
                 created_at: b.created_at,
                 role: roleByBusiness.get(Number(b.id)) || 'owner',
@@ -136,7 +140,10 @@ jest.mock('../tenantManager', () => {
             return { rows, rowCount: rows.length };
           }
 
-          if (statement.startsWith('SELECT ID, NAME, GOOGLE_REVIEW_URL, LOGO_URL, WELCOME_MESSAGE, REVIEW_PLATFORMS, PLAN FROM BUSINESSES WHERE ID = $1')) {
+          if (
+            statement.includes('FROM BUSINESSES WHERE ID = $1')
+            && statement.includes('SELECT ID, NAME, GOOGLE_REVIEW_URL, LOGO_URL, WELCOME_MESSAGE, REVIEW_PLATFORMS')
+          ) {
             const found = findBusiness(params[0]);
             if (!found) return { rows: [], rowCount: 0 };
             return {
@@ -147,6 +154,7 @@ jest.mock('../tenantManager', () => {
                 logo_url: found.logo_url,
                 welcome_message: found.welcome_message,
                 review_platforms: found.review_platforms,
+                compose_questions: found.compose_questions || null,
                 plan: found.plan,
               }],
               rowCount: 1,
@@ -161,7 +169,7 @@ jest.mock('../tenantManager', () => {
             return row ? { rows: [{ role: row.role }], rowCount: 1 } : { rows: [], rowCount: 0 };
           }
 
-          if (statement.startsWith('SELECT * FROM REVIEW_TEMPLATES WHERE USED = FALSE AND BUSINESS_ID = $1 ORDER BY CREATED_AT DESC')) {
+          if (statement.startsWith('SELECT * FROM REVIEW_TEMPLATES WHERE USED = FALSE AND BUSINESS_ID = $1')) {
             const businessId = String(params[0]);
             const rows = reviewTemplates.filter((t) => String(t.business_id) === businessId && t.used === false);
             return { rows, rowCount: rows.length };

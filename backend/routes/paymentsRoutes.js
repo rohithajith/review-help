@@ -3,6 +3,7 @@ const router = express.Router();
 const { getAdminPool } = require('../tenantManager');
 const authMiddleware = require('../middleware/authMiddleware');
 const { generateOnboardingTemplates } = require('../services/onboardingGenerationService');
+const reviewAssistService = require('../services/reviewAssistService');
 
 // Stripe instance (lazy-loaded)
 let stripe = null;
@@ -117,6 +118,42 @@ async function triggerOnboardingGenerationAfterPayment({
   businessName,
   plan,
 }) {
+  try {
+    const composeRes = await pool.query(
+      `SELECT compose_questions, review_platforms
+       FROM businesses
+       WHERE id = $1
+       LIMIT 1`,
+      [businessId]
+    );
+    const composeRow = composeRes.rows[0] || null;
+    const existingComposeQuestions = reviewAssistService.sanitizeComposeQuestions(composeRow && composeRow.compose_questions);
+    if (!existingComposeQuestions) {
+      const { questions, source } = await reviewAssistService.getComposeQuestions({
+        businessProfile: {
+          id: businessId,
+          name: businessName || null,
+          business_type: businessType || null,
+          business_category: businessCategory || null,
+          review_platforms: composeRow && composeRow.review_platforms ? composeRow.review_platforms : [],
+        },
+        adminQuestions: null,
+      });
+      await pool.query(
+        `UPDATE businesses
+         SET compose_questions = $1::jsonb
+         WHERE id = $2
+           AND compose_questions IS NULL`,
+        [JSON.stringify(questions), businessId]
+      );
+      console.info(`checkout.session.completed: stored compose questions for business ${businessId} (source=${source})`);
+    } else {
+      console.info(`checkout.session.completed: compose questions already exist for business ${businessId}, skipping generation`);
+    }
+  } catch (err) {
+    console.warn(`checkout.session.completed: compose question generation failed for business ${businessId}: ${err.message}`);
+  }
+
   if (!businessType || !businessCategory) {
     console.info(`checkout.session.completed: skip template generation for business ${businessId} (missing business_type/category)`);
     return;

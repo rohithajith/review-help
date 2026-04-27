@@ -60,13 +60,16 @@ const businessLogos = {
 
 const CONSENT_STATEMENT = 'I allow this business to use my review in marketing and public content (for example website, social media, or promotional materials). I can revoke this permission later using my revoke token.';
 const LEGACY_FALLBACK_TEMPLATE_TEXT = 'Thank you for visiting — we appreciate your feedback.';
-const COMPOSE_QUESTIONS = [
-  { key: 'stay_purpose', label: 'What was the purpose of your stay?', placeholder: 'Business trip, family vacation, weekend break, etc.' },
-  { key: 'room_cleanliness', label: 'How was the room cleanliness and comfort?', placeholder: 'Mention what stood out, if anything.' },
-  { key: 'staff_service', label: 'How was the staff service during your stay?', placeholder: 'Reception, housekeeping, concierge, etc.' },
-  { key: 'checkin_checkout', label: 'How was check-in/check-out experience?', placeholder: 'Smooth, delayed, friendly, efficient, etc.' },
-  { key: 'overall_value', label: 'How would you describe overall value for money?', placeholder: 'Reasonable, great value, a bit pricey, etc.' },
-];
+const normalizeComposeQuestions = (rawQuestions) => {
+  if (!Array.isArray(rawQuestions)) return [];
+  return rawQuestions
+    .map((question, index) => ({
+      key: String(question?.key || `question_${index + 1}`).trim(),
+      label: String(question?.label || '').trim(),
+      placeholder: String(question?.placeholder || '').trim(),
+    }))
+    .filter((question) => question.key && question.label);
+};
 
 // =============================================================================
 // Business Template Page - Each business owner gets their unique URL
@@ -104,6 +107,10 @@ function BusinessTemplatePage() {
   const [showPermissionPopup, setShowPermissionPopup] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [showComposeModal, setShowComposeModal] = useState(false);
+  const [composeQuestions, setComposeQuestions] = useState([]);
+  const [composeQuestionsSource, setComposeQuestionsSource] = useState('');
+  const [composeQuestionsLoading, setComposeQuestionsLoading] = useState(false);
+  const [composeQuestionsError, setComposeQuestionsError] = useState('');
   const [composeAnswers, setComposeAnswers] = useState({});
   const [composeSkipped, setComposeSkipped] = useState({});
   const [composeStep, setComposeStep] = useState(0);
@@ -352,11 +359,30 @@ function BusinessTemplatePage() {
     });
   };
 
-  const handleCompose = () => {
+  const handleCompose = async () => {
     setComposeStep(0);
+    setComposeQuestions([]);
+    setComposeQuestionsSource('');
+    setComposeQuestionsError('');
     setComposeAnswers({});
     setComposeSkipped({});
+    setComposeQuestionsLoading(true);
     setShowComposeModal(true);
+    try {
+      const res = await api.get(`/${businessId}/reviews/compose/questions`);
+      const loadedQuestions = normalizeComposeQuestions(res?.data?.questions);
+      if (loadedQuestions.length === 0) {
+        throw new Error('No compose questions available');
+      }
+      setComposeQuestions(loadedQuestions);
+      setComposeQuestionsSource(String(res?.data?.source || ''));
+    } catch (err) {
+      console.error('Error loading compose questions', err);
+      setComposeQuestions([]);
+      setComposeQuestionsError(err?.response?.data?.message || 'Could not load compose questions right now.');
+    } finally {
+      setComposeQuestionsLoading(false);
+    }
   };
 
   const handlePolishOwnReview = async () => {
@@ -380,11 +406,13 @@ function BusinessTemplatePage() {
     }
   };
 
-  const answeredComposeCount = COMPOSE_QUESTIONS.filter((q) => String(composeAnswers[q.key] || '').trim().length > 0).length;
-  const currentComposeQuestion = COMPOSE_QUESTIONS[composeStep];
-  const composeQuestionsLeft = Math.max(COMPOSE_QUESTIONS.length - composeStep - 1, 0);
+  const composeQuestionCount = composeQuestions.length;
+  const answeredComposeCount = composeQuestions.filter((q) => String(composeAnswers[q.key] || '').trim().length > 0).length;
+  const currentComposeQuestion = composeQuestions[composeStep] || null;
+  const composeQuestionsLeft = currentComposeQuestion ? Math.max(composeQuestionCount - composeStep - 1, 0) : 0;
 
   const handleComposeAnswerChange = (key, value) => {
+    if (!key) return;
     setComposeAnswers((prev) => ({ ...prev, [key]: value }));
     if (value && value.trim().length > 0) {
       setComposeSkipped((prev) => ({ ...prev, [key]: false }));
@@ -392,6 +420,7 @@ function BusinessTemplatePage() {
   };
 
   const handleToggleSkipComposeQuestion = (key) => {
+    if (!key) return;
     setComposeSkipped((prev) => {
       const next = !prev[key];
       return { ...prev, [key]: next };
@@ -401,6 +430,10 @@ function BusinessTemplatePage() {
 
   const resetComposeModal = () => {
     setShowComposeModal(false);
+    setComposeQuestions([]);
+    setComposeQuestionsSource('');
+    setComposeQuestionsError('');
+    setComposeQuestionsLoading(false);
     setComposeAnswers({});
     setComposeSkipped({});
     setComposeStep(0);
@@ -408,7 +441,7 @@ function BusinessTemplatePage() {
   };
 
   const handleComposeNext = () => {
-    setComposeStep((prev) => Math.min(prev + 1, COMPOSE_QUESTIONS.length - 1));
+    setComposeStep((prev) => Math.min(prev + 1, Math.max(composeQuestionCount - 1, 0)));
   };
 
   const handleComposeBack = () => {
@@ -416,15 +449,15 @@ function BusinessTemplatePage() {
   };
 
   const handleGenerateComposeReview = async () => {
-    if (answeredComposeCount < 3) return;
+    if (answeredComposeCount < 1 || composeQuestionCount < 1) return;
     setComposeLoading(true);
     try {
       const answersPayload = {};
-      for (const q of COMPOSE_QUESTIONS) {
+      for (const q of composeQuestions) {
         const v = String(composeAnswers[q.key] || '').trim();
         if (v) answersPayload[q.key] = v;
       }
-      const skippedKeys = COMPOSE_QUESTIONS.filter((q) => composeSkipped[q.key]).map((q) => q.key);
+      const skippedKeys = composeQuestions.filter((q) => composeSkipped[q.key]).map((q) => q.key);
       const res = await api.post(`/${businessId}/reviews/compose`, {
         answers: answersPayload,
         skippedKeys,
@@ -810,7 +843,18 @@ function BusinessTemplatePage() {
           </Typography>
         </Paper>
 
-        <Dialog open={showChannelPopup} onClose={() => setShowChannelPopup(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={showChannelPopup}
+          onClose={() => {
+            if (showExternalOptions) {
+              handleSkipPostSubmitPlatforms();
+              return;
+            }
+            setShowChannelPopup(false);
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
             Thank you for your valuable review
           </DialogTitle>
@@ -953,57 +997,73 @@ function BusinessTemplatePage() {
         <Dialog open={showComposeModal} onClose={resetComposeModal} maxWidth="md" fullWidth>
           <DialogTitle>Compose Review With AI</DialogTitle>
           <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Answer one question at a time. You can skip any question and continue with the rest.
-            </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-              <Chip size="small" label={`Question ${composeStep + 1} of ${COMPOSE_QUESTIONS.length}`} />
-              <Typography variant="caption" sx={{ color: '#64748b' }}>
-                {composeQuestionsLeft} left
-              </Typography>
-            </Box>
-            <Card variant="outlined" sx={{ borderRadius: 2 }}>
-              <CardContent sx={{ p: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  {currentComposeQuestion.label}
+            {composeQuestionsLoading ? (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <CircularProgress size={24} />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1.2 }}>
+                  Loading business-specific compose questions...
                 </Typography>
-                <TextField
-                  fullWidth
-                  size="small"
-                  multiline
-                  minRows={2}
-                  placeholder={currentComposeQuestion.placeholder}
-                  value={composeAnswers[currentComposeQuestion.key] || ''}
-                  onChange={(e) => handleComposeAnswerChange(currentComposeQuestion.key, e.target.value)}
-                  disabled={!!composeSkipped[currentComposeQuestion.key]}
-                />
-                <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={() => handleToggleSkipComposeQuestion(currentComposeQuestion.key)}
-                  >
-                    {composeSkipped[currentComposeQuestion.key] ? 'Unskip' : 'Skip'}
-                  </Button>
+              </Box>
+            ) : composeQuestionsError ? (
+              <Alert severity="error">{composeQuestionsError}</Alert>
+            ) : currentComposeQuestion ? (
+              <>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Answer one question at a time. You can skip any question and continue with the rest.
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Chip size="small" label={`Question ${composeStep + 1} of ${composeQuestionCount}`} />
+                  <Typography variant="caption" sx={{ color: '#64748b' }}>
+                    {composeQuestionsLeft} left
+                  </Typography>
                 </Box>
-              </CardContent>
-            </Card>
-            <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: '#64748b' }}>
-              Answered: {answeredComposeCount} / 1 minimum
-            </Typography>
+                <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                  <CardContent sx={{ p: 1.5 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      {currentComposeQuestion.label}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      multiline
+                      minRows={2}
+                      placeholder={currentComposeQuestion.placeholder}
+                      value={composeAnswers[currentComposeQuestion.key] || ''}
+                      onChange={(e) => handleComposeAnswerChange(currentComposeQuestion.key, e.target.value)}
+                      disabled={!!composeSkipped[currentComposeQuestion.key]}
+                    />
+                    <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleToggleSkipComposeQuestion(currentComposeQuestion.key)}
+                      >
+                        {composeSkipped[currentComposeQuestion.key] ? 'Unskip' : 'Skip'}
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+                <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: '#64748b' }}>
+                  Answered: {answeredComposeCount} / 1 minimum
+                  {composeQuestionsSource ? ` (${composeQuestionsSource})` : ''}
+                </Typography>
+              </>
+            ) : (
+              <Alert severity="warning">No compose questions available right now.</Alert>
+            )}
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
-            <Button onClick={handleComposeBack} disabled={composeStep === 0}>
+            <Button onClick={handleComposeBack} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep === 0}>
               Back
             </Button>
-            <Button onClick={handleComposeNext} disabled={composeStep >= COMPOSE_QUESTIONS.length - 1}>
+            <Button onClick={handleComposeNext} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep >= composeQuestionCount - 1}>
               Next
             </Button>
             <Button onClick={resetComposeModal}>Cancel</Button>
             <Button
               variant="contained"
               onClick={handleGenerateComposeReview}
-              disabled={composeLoading || answeredComposeCount < 1}
+              disabled={composeQuestionsLoading || !currentComposeQuestion || composeLoading || answeredComposeCount < 1}
             >
               {composeLoading ? 'Generating...' : 'Generate Review'}
             </Button>
@@ -1211,7 +1271,6 @@ function AppLayout() {
 
   const pathname = location?.pathname || '/';
   const navAllowedPublicPaths = new Set([
-    '/',
     '/pricing',
     '/contact',
     '/signup',

@@ -8,6 +8,17 @@ const CONSENT_STATEMENT_TEXT = 'I allow this business to use my review in market
 const generationService = require('../services/generationService');
 const LEGACY_FALLBACK_TEMPLATE_TEXT = 'Thank you for visiting — we appreciate your feedback.';
 
+async function loadBusinessProfile(pool, businessId) {
+  const { rows } = await pool.query(
+    `SELECT id, name, business_type, business_category, welcome_message, review_platforms, compose_questions
+     FROM businesses
+     WHERE id = $1
+     LIMIT 1`,
+    [businessId]
+  );
+  return rows[0] || null;
+}
+
 function hashConsentToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -217,7 +228,7 @@ exports.getMyReviews = async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, business_id, template_id, rating, review_text, created_at,
-              consent_granted, consent_granted_at, consent_revoked_at
+              consent_granted, consent_granted_at, consent_revoked_at, post_submit_metadata
        FROM customer_reviews
        WHERE business_id = $1
        ORDER BY created_at DESC`,
@@ -226,6 +237,28 @@ exports.getMyReviews = async (req, res, next) => {
     res.json(rows);
   } catch (err) {
     next(err);
+  }
+};
+
+// Compose questions for the business (public endpoint)
+exports.getComposeQuestions = async (req, res, next) => {
+  const pool = req.db;
+  const businessId = req.businessId;
+  try {
+    const businessProfile = await loadBusinessProfile(pool, businessId);
+    if (!businessProfile) {
+      return res.status(404).json({ message: 'Business not found' });
+    }
+
+    const dbQuestions = reviewAssistService.sanitizeComposeQuestions(businessProfile.compose_questions);
+    if (!dbQuestions) {
+      return res.status(503).json({
+        message: 'Compose questions are not ready yet. Please try again shortly.',
+      });
+    }
+    return res.json({ questions: dbQuestions, source: 'db' });
+  } catch (err) {
+    return next(err);
   }
 };
 
@@ -243,7 +276,10 @@ exports.composeReview = async (req, res, next) => {
   }
 
   try {
-    const reviewText = await reviewAssistService.composeFromAnswers({ answers, skippedKeys });
+    const businessProfile = req.db && req.businessId
+      ? await loadBusinessProfile(req.db, req.businessId)
+      : null;
+    const reviewText = await reviewAssistService.composeFromAnswers({ answers, skippedKeys, businessProfile });
     return res.json({ reviewText });
   } catch (err) {
     return res.status(422).json({ message: err.message || 'Could not generate review at the moment.' });
@@ -259,7 +295,10 @@ exports.polishReview = async (req, res, next) => {
   if (!reviewText) return res.status(400).json({ message: 'reviewText is required' });
 
   try {
-    const polished = await reviewAssistService.polishReview({ reviewText });
+    const businessProfile = req.db && req.businessId
+      ? await loadBusinessProfile(req.db, req.businessId)
+      : null;
+    const polished = await reviewAssistService.polishReview({ reviewText, businessProfile });
     return res.json({ reviewText: polished });
   } catch (err) {
     return res.status(422).json({ message: err.message || 'Could not polish review at the moment.' });

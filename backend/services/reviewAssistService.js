@@ -1,5 +1,7 @@
-// AI review assist service for Compose + Polish.
+// AI review assist service for Compose + Polish + Compose Question Generation.
 // Enforces strict FTC-safe constraints with deterministic post-checks.
+
+const crypto = require('crypto');
 
 let fetchFn = global.fetch;
 let GlobalAbortController = global.AbortController;
@@ -16,6 +18,15 @@ if (!fetchFn) {
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || 'google/gemma-3-27b-it:free';
+const COMPOSE_QUESTION_KEYS = [
+  'visit_purpose',
+  'service_quality',
+  'staff_experience',
+  'specific_highlight',
+  'overall_recommendation',
+];
+const COMPOSE_QUESTION_CACHE_TTL_MS = Number(process.env.COMPOSE_QUESTION_CACHE_TTL_MS || 6 * 60 * 60 * 1000);
+const composeQuestionCache = new Map();
 
 const FTC_CONSTRAINTS = `
 Hard constraints (must follow):
@@ -59,15 +70,223 @@ function normalizeReviewText(text) {
     .trim();
 }
 
-async function callOpenRouter(messages, model) {
+function normalizeQuestionText(value, maxLen) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function normalizePlatforms(reviewPlatforms) {
+  if (!Array.isArray(reviewPlatforms)) return [];
+  return reviewPlatforms
+    .map((platform) => ({
+      name: normalizeQuestionText(platform && platform.name, 80),
+      url: String(platform && platform.url ? platform.url : '').trim(),
+    }))
+    .filter((platform) => platform.name || platform.url);
+}
+
+function normalizeBusinessProfile(input) {
+  const profile = input && typeof input === 'object' ? input : {};
+  return {
+    id: profile.id == null ? null : String(profile.id),
+    name: normalizeQuestionText(profile.name, 120),
+    businessType: normalizeQuestionText(profile.business_type || profile.businessType, 80),
+    businessCategory: normalizeQuestionText(profile.business_category || profile.businessCategory, 80),
+    welcomeMessage: normalizeQuestionText(profile.welcome_message || profile.welcomeMessage, 220),
+    reviewPlatforms: normalizePlatforms(profile.review_platforms || profile.reviewPlatforms),
+  };
+}
+
+function sanitizeComposeQuestions(rawQuestions, { strict = false } = {}) {
+  if (!Array.isArray(rawQuestions)) {
+    if (strict) throw new Error('compose_questions must be an array');
+    return null;
+  }
+  if (rawQuestions.length !== COMPOSE_QUESTION_KEYS.length) {
+    if (strict) throw new Error(`compose_questions must contain exactly ${COMPOSE_QUESTION_KEYS.length} items`);
+    return null;
+  }
+
+  const normalized = [];
+  for (let i = 0; i < COMPOSE_QUESTION_KEYS.length; i += 1) {
+    const item = rawQuestions[i];
+    if (!item || typeof item !== 'object') {
+      if (strict) throw new Error(`compose_questions[${i}] must be an object`);
+      return null;
+    }
+    const label = normalizeQuestionText(item.label, 160);
+    const placeholder = normalizeQuestionText(item.placeholder, 200);
+    if (!label) {
+      if (strict) throw new Error(`compose_questions[${i}].label is required`);
+      return null;
+    }
+    normalized.push({
+      key: COMPOSE_QUESTION_KEYS[i],
+      label,
+      placeholder,
+    });
+  }
+  return normalized;
+}
+
+function describeBusiness(profile) {
+  const parts = [];
+  if (profile.name) parts.push(`name: ${profile.name}`);
+  if (profile.businessCategory) parts.push(`category: ${profile.businessCategory}`);
+  if (profile.businessType) parts.push(`type: ${profile.businessType}`);
+  if (profile.welcomeMessage) parts.push(`welcome message: ${profile.welcomeMessage}`);
+  if (Array.isArray(profile.reviewPlatforms) && profile.reviewPlatforms.length > 0) {
+    parts.push(`review platforms: ${profile.reviewPlatforms.map((p) => p.name).filter(Boolean).join(', ')}`);
+  }
+  return parts.length > 0 ? parts.join('; ') : 'generic local business';
+}
+
+function deriveExperienceNoun(profile) {
+  const value = `${profile.businessCategory} ${profile.businessType}`.toLowerCase();
+  if (/(nail|salon|barber|hair|stylist)/i.test(value)) return 'appointment';
+  if (/(restaurant|cafe|coffee|bar|food|takeaway|kitchen)/i.test(value)) return 'visit';
+  if (/(hotel|bnb|inn|stay|resort)/i.test(value)) return 'stay';
+  if (/(clinic|dental|medical|therapy|wellness|spa|massage)/i.test(value)) return 'appointment';
+  if (/(gym|fitness|training)/i.test(value)) return 'session';
+  return 'experience';
+}
+
+function getBusinessAwareFallbackQuestions(rawProfile) {
+  const profile = normalizeBusinessProfile(rawProfile);
+  const experience = deriveExperienceNoun(profile);
+  const category = profile.businessCategory || profile.businessType || 'service';
+  const brandName = profile.name ? ` at ${profile.name}` : '';
+
+  return sanitizeComposeQuestions([
+    {
+      label: `What brought you in for this ${experience}${brandName}?`,
+      placeholder: `For example: regular ${category.toLowerCase()}, first-time visit, quick stop, special occasion.`,
+    },
+    {
+      label: `What stood out about the quality of the ${category.toLowerCase()}?`,
+      placeholder: 'Mention the detail that mattered most to you.',
+    },
+    {
+      label: `How was the team/service during your ${experience}?`,
+      placeholder: 'Friendly, professional, quick, attentive, etc.',
+    },
+    {
+      label: 'What specific result or moment are you happiest with?',
+      placeholder: 'Share one concrete outcome other customers would care about.',
+    },
+    {
+      label: `How would you sum up your overall ${experience}?`,
+      placeholder: 'Value for money, consistency, and whether you would return.',
+    },
+  ]);
+}
+
+function buildQuestionPromptMessages(rawProfile, strictRetry) {
+  const profile = normalizeBusinessProfile(rawProfile);
+  const system = `You create customer-facing review composition questions for small businesses.
+Generate exactly ${COMPOSE_QUESTION_KEYS.length} questions tailored to the business context.
+Each question must help a real customer write an honest review.
+Return only a valid JSON array of objects with exactly two keys per item:
+- "label": the question text
+- "placeholder": a short hint/example for answering
+No markdown. No commentary.`;
+
+  let user = `Business context: ${describeBusiness(profile)}.
+Create a balanced set of questions that cover purpose, quality, service, specifics, and overall impression.
+Keep language plain and applicable to this business category.`;
+
+  if (strictRetry && strictRetry.previousOutput) {
+    user += `\n\nYour previous output was invalid for this task: "${strictRetry.previousOutput}". Return strict JSON only.`;
+  }
+
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+}
+
+function parseQuestionArray(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return null;
+
+  const candidates = [];
+  candidates.push(text);
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch) candidates.push(arrayMatch[0]);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!Array.isArray(parsed)) continue;
+      const normalizedInput = parsed.map((item) => {
+        if (typeof item === 'string') {
+          return { label: item, placeholder: '' };
+        }
+        if (!item || typeof item !== 'object') return null;
+        return {
+          label: item.label || item.question || item.prompt || item.text || '',
+          placeholder: item.placeholder || item.hint || item.example || '',
+        };
+      });
+      if (normalizedInput.some((item) => item == null)) continue;
+      const sanitized = sanitizeComposeQuestions(normalizedInput);
+      if (sanitized) return sanitized;
+    } catch (err) {
+      // Keep trying with other candidates.
+    }
+  }
+  return null;
+}
+
+function buildComposeFingerprint(rawProfile) {
+  const profile = normalizeBusinessProfile(rawProfile);
+  const payload = JSON.stringify({
+    id: profile.id || '',
+    name: profile.name || '',
+    businessType: profile.businessType || '',
+    businessCategory: profile.businessCategory || '',
+    welcomeMessage: profile.welcomeMessage || '',
+    reviewPlatforms: profile.reviewPlatforms.map((p) => p.name || ''),
+  });
+  return crypto.createHash('sha1').update(payload).digest('hex');
+}
+
+function getComposeCacheKey(rawProfile) {
+  const profile = normalizeBusinessProfile(rawProfile);
+  return profile.id ? `business:${profile.id}` : `anon:${buildComposeFingerprint(profile)}`;
+}
+
+function readCachedComposeQuestions(rawProfile) {
+  const cacheKey = getComposeCacheKey(rawProfile);
+  const fingerprint = buildComposeFingerprint(rawProfile);
+  const cached = composeQuestionCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.fingerprint !== fingerprint) return null;
+  if (Date.now() - cached.createdAt > COMPOSE_QUESTION_CACHE_TTL_MS) return null;
+  return cached.questions;
+}
+
+function writeCachedComposeQuestions(rawProfile, questions) {
+  const cacheKey = getComposeCacheKey(rawProfile);
+  const fingerprint = buildComposeFingerprint(rawProfile);
+  composeQuestionCache.set(cacheKey, {
+    fingerprint,
+    questions,
+    createdAt: Date.now(),
+  });
+}
+
+async function callOpenRouter(messages, model, options = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not set in env');
 
   const payload = {
     model,
     messages,
-    temperature: 0.6,
-    max_tokens: 240,
+    temperature: options.temperature == null ? 0.6 : options.temperature,
+    max_tokens: options.maxTokens == null ? 240 : options.maxTokens,
   };
 
   let resp;
@@ -128,8 +347,36 @@ async function generateWithGuardrails(buildMessages) {
   throw new Error('Unable to generate FTC-safe review text');
 }
 
-function buildComposeMessages({ answers, skippedKeys }, strictRetry) {
-  const system = `You write customer review drafts for hotels based only on user-provided facts.
+async function generateComposeQuestionsWithAi(rawProfile) {
+  const models = [MODEL, FALLBACK_MODEL];
+  for (const model of models) {
+    try {
+      const firstRaw = await callOpenRouter(buildQuestionPromptMessages(rawProfile, null), model, {
+        temperature: 0.55,
+        maxTokens: 520,
+      });
+      const firstParsed = parseQuestionArray(firstRaw);
+      if (firstParsed) return firstParsed;
+
+      const retryRaw = await callOpenRouter(buildQuestionPromptMessages(rawProfile, {
+        previousOutput: normalizeReviewText(firstRaw),
+      }), model, {
+        temperature: 0.35,
+        maxTokens: 520,
+      });
+      const retryParsed = parseQuestionArray(retryRaw);
+      if (retryParsed) return retryParsed;
+    } catch (err) {
+      console.warn(`reviewAssistService: compose question model ${model} failed: ${err.message}`);
+    }
+  }
+  throw new Error('Unable to generate compose questions');
+}
+
+function buildComposeMessages({ answers, skippedKeys, businessProfile }, strictRetry) {
+  const businessContext = describeBusiness(normalizeBusinessProfile(businessProfile));
+  const system = `You write customer review drafts for local businesses based only on user-provided facts.
+Business context: ${businessContext}
 ${FTC_CONSTRAINTS}
 Output only one short review paragraph, 40-90 words, plain text.`;
 
@@ -137,7 +384,7 @@ Output only one short review paragraph, 40-90 words, plain text.`;
     answers,
     skippedKeys,
   };
-  let user = `Generate a hotel review draft from this JSON input:\n${JSON.stringify(userPayload)}`;
+  let user = `Generate a customer review draft from this JSON input:\n${JSON.stringify(userPayload)}`;
   if (strictRetry && strictRetry.previousOutput) {
     user += `\n\nYour prior output violated constraints (${strictRetry.violations.join(', ')}): "${strictRetry.previousOutput}".
 Regenerate safely with stricter factual language.`;
@@ -149,8 +396,10 @@ Regenerate safely with stricter factual language.`;
   ];
 }
 
-function buildPolishMessages({ reviewText }, strictRetry) {
-  const system = `You polish customer-written hotel reviews for grammar, clarity, and sentence flow.
+function buildPolishMessages({ reviewText, businessProfile }, strictRetry) {
+  const businessContext = describeBusiness(normalizeBusinessProfile(businessProfile));
+  const system = `You polish customer-written reviews for grammar, clarity, and sentence flow.
+Business context: ${businessContext}
 ${FTC_CONSTRAINTS}
 Do not add new facts. Keep original meaning. Output plain text only, 30-90 words.`;
 
@@ -165,26 +414,56 @@ Rewrite safely and factually without hype.`;
   ];
 }
 
-async function composeFromAnswers({ answers = {}, skippedKeys = [] }) {
+async function getComposeQuestions({ businessProfile = {}, adminQuestions = null }) {
+  const normalizedAdminQuestions = sanitizeComposeQuestions(adminQuestions);
+  if (normalizedAdminQuestions) {
+    return { questions: normalizedAdminQuestions, source: 'admin' };
+  }
+
+  const cached = readCachedComposeQuestions(businessProfile);
+  if (cached) {
+    return { questions: cached, source: 'cache' };
+  }
+
+  try {
+    const generated = await generateComposeQuestionsWithAi(businessProfile);
+    writeCachedComposeQuestions(businessProfile, generated);
+    return { questions: generated, source: 'ai' };
+  } catch (err) {
+    console.warn(`reviewAssistService: using compose question fallback: ${err.message}`);
+    return { questions: getBusinessAwareFallbackQuestions(businessProfile), source: 'fallback' };
+  }
+}
+
+async function composeFromAnswers({ answers = {}, skippedKeys = [], businessProfile = null }) {
   if (!answers || typeof answers !== 'object') throw new Error('answers must be an object');
   const nonEmpty = Object.values(answers).filter((v) => String(v || '').trim().length > 0);
   if (nonEmpty.length < 1) throw new Error('At least 1 answered question is required');
 
-  return generateWithGuardrails((strictRetry) => buildComposeMessages({ answers, skippedKeys }, strictRetry));
+  return generateWithGuardrails((strictRetry) => buildComposeMessages({ answers, skippedKeys, businessProfile }, strictRetry));
 }
 
-async function polishReview({ reviewText }) {
+async function polishReview({ reviewText, businessProfile = null }) {
   const text = String(reviewText || '').trim();
   if (!text) throw new Error('reviewText is required');
-  return generateWithGuardrails((strictRetry) => buildPolishMessages({ reviewText: text }, strictRetry));
+  return generateWithGuardrails((strictRetry) => buildPolishMessages({ reviewText: text, businessProfile }, strictRetry));
 }
 
 module.exports = {
+  COMPOSE_QUESTION_KEYS,
+  sanitizeComposeQuestions,
+  getComposeQuestions,
   composeFromAnswers,
   polishReview,
   // exported for tests
   __private: {
+    composeQuestionCache,
     detectGuardrailViolations,
     normalizeReviewText,
+    normalizeBusinessProfile,
+    parseQuestionArray,
+    buildComposeFingerprint,
+    getBusinessAwareFallbackQuestions,
+    clearComposeQuestionCache: () => composeQuestionCache.clear(),
   },
 };

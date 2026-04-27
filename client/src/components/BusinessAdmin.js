@@ -47,6 +47,50 @@ const DEFAULT_REVIEW_PLATFORMS = [
   { name: 'Booking.com', url: '' },
 ];
 
+const DEFAULT_COMPOSE_QUESTIONS = [
+  {
+    key: 'visit_purpose',
+    label: 'What brought you in for this visit?',
+    placeholder: 'For example: first time, regular appointment, or quick service.',
+  },
+  {
+    key: 'service_quality',
+    label: 'What stood out about the quality of the service?',
+    placeholder: 'Mention the specific detail that mattered most.',
+  },
+  {
+    key: 'staff_experience',
+    label: 'How was the team or staff experience?',
+    placeholder: 'Friendly, professional, attentive, quick, etc.',
+  },
+  {
+    key: 'specific_highlight',
+    label: 'What specific result or moment are you happiest with?',
+    placeholder: 'Share one concrete highlight from your experience.',
+  },
+  {
+    key: 'overall_recommendation',
+    label: 'How would you summarize your overall experience?',
+    placeholder: 'Value for money, consistency, and whether you would return.',
+  },
+];
+
+function normalizeComposeQuestions(rawQuestions) {
+  if (!Array.isArray(rawQuestions) || rawQuestions.length !== DEFAULT_COMPOSE_QUESTIONS.length) {
+    return DEFAULT_COMPOSE_QUESTIONS.map((question) => ({ ...question }));
+  }
+
+  const normalized = rawQuestions.map((question, index) => ({
+    key: DEFAULT_COMPOSE_QUESTIONS[index].key,
+    label: String(question?.label || '').trim(),
+    placeholder: String(question?.placeholder || '').trim(),
+  }));
+  if (normalized.some((question) => !question.label)) {
+    return DEFAULT_COMPOSE_QUESTIONS.map((question) => ({ ...question }));
+  }
+  return normalized;
+}
+
 async function waitForSession(maxAttempts = 6, delayMs = 200) {
   for (let i = 0; i < maxAttempts; i += 1) {
     try {
@@ -95,6 +139,7 @@ const BusinessAdmin = ({ businessId }) => {
   const [logoUrl, setLogoUrl] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [reviewPlatforms, setReviewPlatforms] = useState(DEFAULT_REVIEW_PLATFORMS);
+  const [composeQuestions, setComposeQuestions] = useState(DEFAULT_COMPOSE_QUESTIONS);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertVariant, setAlertVariant] = useState('success');
   const [loading, setLoading] = useState(true);
@@ -176,6 +221,7 @@ const BusinessAdmin = ({ businessId }) => {
       setBusinessName(data?.name || '');
       setLogoUrl(localLogo || data?.logo_url || '');
       setReviewPlatforms(Array.isArray(data?.review_platforms) ? data.review_platforms : DEFAULT_REVIEW_PLATFORMS);
+      setComposeQuestions(normalizeComposeQuestions(data?.compose_questions));
     } catch (err) {
       console.error('Error fetching business:', err);
     }
@@ -520,6 +566,46 @@ const BusinessAdmin = ({ businessId }) => {
     setReviewPlatforms((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleComposeQuestionChange = (index, field, value) => {
+    setComposeQuestions((prev) => {
+      const next = Array.isArray(prev)
+        ? prev.map((question) => ({ ...question }))
+        : normalizeComposeQuestions(null);
+      if (!next[index]) return prev;
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleSaveComposeQuestions = async () => {
+    try {
+      const normalizedComposeQuestions = normalizeComposeQuestions(composeQuestions).map((question) => ({
+        key: question.key,
+        label: String(question.label || '').trim(),
+        placeholder: String(question.placeholder || '').trim(),
+      }));
+      if (normalizedComposeQuestions.some((question) => !question.label)) {
+        setAlertMessage('Each compose question must have text.');
+        setAlertVariant('error');
+        return;
+      }
+
+      const response = await api.put(`/${businessId}/business`, {
+        compose_questions: normalizedComposeQuestions,
+      });
+      const saved = normalizeComposeQuestions(response?.data?.compose_questions || normalizedComposeQuestions);
+      setComposeQuestions(saved);
+      setBusiness((prev) => ({ ...(prev || {}), compose_questions: saved }));
+      setAlertMessage('Compose questions saved successfully.');
+      setAlertVariant('success');
+      dispatchBusinessAdminUpdate('compose_questions');
+    } catch (error) {
+      console.error('Error saving compose questions:', error);
+      setAlertMessage(error?.response?.data?.error || 'Error saving compose questions');
+      setAlertVariant('error');
+    }
+  };
+
   // Show loading spinner while checking auth
   if (checkingAuth) {
     return (
@@ -833,6 +919,54 @@ const BusinessAdmin = ({ businessId }) => {
               <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={handleAddPlatform}>
                 Add Platform
               </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card sx={cardSx}>
+            <CardHeader title="Compose Questions" sx={cardHeaderSx} />
+            <CardContent>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                Edit the five AI compose questions customers see when they click Compose.
+              </Typography>
+              <Box sx={{ display: 'grid', gap: 1.2 }}>
+                {composeQuestions.map((question, index) => (
+                  <Box
+                    key={question.key || index}
+                    sx={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 1.5,
+                      p: 1.2,
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.8 }}>
+                      Question {index + 1}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Question Text"
+                      value={question.label}
+                      onChange={(event) => handleComposeQuestionChange(index, 'label', event.target.value)}
+                      sx={{ mb: 1 }}
+                    />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Hint / Placeholder"
+                      value={question.placeholder}
+                      onChange={(event) => handleComposeQuestionChange(index, 'placeholder', event.target.value)}
+                    />
+                  </Box>
+                ))}
+              </Box>
+              <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button variant="contained" size="small" startIcon={<SaveIcon />} onClick={handleSaveComposeQuestions}>
+                  Save Compose Questions
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
