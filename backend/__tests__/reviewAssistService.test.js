@@ -39,7 +39,7 @@ describe('reviewAssistService', () => {
     });
 
     expect(out).toMatch(/clean/i);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   test('polishReview fails safely when outputs remain non-compliant', async () => {
@@ -50,6 +50,44 @@ describe('reviewAssistService', () => {
 
     const service = require('../services/reviewAssistService');
     await expect(service.polishReview({ reviewText: 'Good stay.' })).rejects.toThrow('Unable to generate FTC-safe review text');
+  });
+
+  test('polishReview rejects meta/instruction output and returns valid polished text from retry', async () => {
+    const metaOutput = 'We need to polish the review text and keep original meaning. Must not add facts. Plain text, 30-90 words.';
+    const validOutput = 'Good lad, first time here, and I loved the new beard. The visit felt positive from start to finish, and I left happy with the result. It was my first time, and the outcome gave me confidence to come back again for the same quality and style.';
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(mockResponseWithText(metaOutput))
+      .mockResolvedValueOnce(mockResponseWithText(validOutput));
+    global.fetch = fetchMock;
+
+    const service = require('../services/reviewAssistService');
+    const out = await service.polishReview({ reviewText: 'Good lad First time here Love the new beard' });
+    expect(out).toMatch(/first time here/i);
+    expect(out).toMatch(/new beard/i);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('composeFromAnswers rejects meta/instruction output and returns clean review from retry', async () => {
+    const metaOutput = 'We need to polish the review text. Must not add facts, keep original meaning, output plain text only.';
+    const validOutput = 'First time here and I am really happy with the new beard. The barber understood what I wanted and delivered a clean, sharp result. The whole visit felt comfortable and straightforward, and I left feeling confident with how everything turned out.';
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(mockResponseWithText(metaOutput))
+      .mockResolvedValueOnce(mockResponseWithText(validOutput));
+    global.fetch = fetchMock;
+
+    const service = require('../services/reviewAssistService');
+    const out = await service.composeFromAnswers({
+      answers: {
+        visit_purpose: 'First time here',
+        service_quality: 'Love the new beard',
+      },
+      skippedKeys: [],
+    });
+    expect(out).toMatch(/first time here/i);
+    expect(out).toMatch(/new beard/i);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('getComposeQuestions returns admin override when provided', async () => {

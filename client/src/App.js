@@ -70,6 +70,11 @@ const normalizeComposeQuestions = (rawQuestions) => {
     }))
     .filter((question) => question.key && question.label);
 };
+const isLikelyMetaAiOutput = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  return /must not add facts|keep original meaning|we need to polish|output plain text|meta commentary|word count/i.test(text);
+};
 
 // =============================================================================
 // Business Template Page - Each business owner gets their unique URL
@@ -116,6 +121,8 @@ function BusinessTemplatePage() {
   const [composeStep, setComposeStep] = useState(0);
   const [composeLoading, setComposeLoading] = useState(false);
   const [polishLoading, setPolishLoading] = useState(false);
+  const [composeTouchStartX, setComposeTouchStartX] = useState(null);
+  const [composeTouchStartY, setComposeTouchStartY] = useState(null);
   const isErrorMessage = /could not|error|failed|forbidden|invalid|missing/i.test(String(successMessage || ''));
   const businessLogoSrc = business?.logo_url || businessLogos[businessId] || '';
 
@@ -393,11 +400,11 @@ function BusinessTemplatePage() {
         reviewText: ownReviewText.trim(),
       });
       const polished = String(res?.data?.reviewText || '').trim();
-      if (polished) {
+      if (polished && !isLikelyMetaAiOutput(polished)) {
         setOwnReviewText(polished);
         setSuccessMessage('Review polished successfully.');
       } else {
-        setSuccessMessage('Could not polish review right now.');
+        setSuccessMessage('Could not polish review right now. Please try again.');
       }
     } catch (err) {
       setSuccessMessage('Could not polish review right now.');
@@ -446,6 +453,30 @@ function BusinessTemplatePage() {
 
   const handleComposeBack = () => {
     setComposeStep((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleComposeTouchStart = (event) => {
+    const touch = event?.touches?.[0];
+    if (!touch) return;
+    setComposeTouchStartX(touch.clientX);
+    setComposeTouchStartY(touch.clientY);
+  };
+
+  const handleComposeTouchEnd = (event) => {
+    const touch = event?.changedTouches?.[0];
+    if (!touch || composeTouchStartX == null || composeTouchStartY == null) return;
+    const deltaX = touch.clientX - composeTouchStartX;
+    const deltaY = touch.clientY - composeTouchStartY;
+    const horizontalSwipe = Math.abs(deltaX) > 48 && Math.abs(deltaY) < 30;
+    if (horizontalSwipe) {
+      if (deltaX < 0) {
+        handleComposeNext();
+      } else {
+        handleComposeBack();
+      }
+    }
+    setComposeTouchStartX(null);
+    setComposeTouchStartY(null);
   };
 
   const handleGenerateComposeReview = async () => {
@@ -1015,7 +1046,12 @@ function BusinessTemplatePage() {
                     {composeQuestionsLeft} left
                   </Typography>
                 </Box>
-                <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                <Card
+                  variant="outlined"
+                  sx={{ borderRadius: 2 }}
+                  onTouchStart={handleComposeTouchStart}
+                  onTouchEnd={handleComposeTouchEnd}
+                >
                   <CardContent sx={{ p: 1.5 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>
                       {currentComposeQuestion.label}
@@ -1030,13 +1066,22 @@ function BusinessTemplatePage() {
                       onChange={(e) => handleComposeAnswerChange(currentComposeQuestion.key, e.target.value)}
                       disabled={!!composeSkipped[currentComposeQuestion.key]}
                     />
-                    <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
                       <Button
                         size="small"
                         variant="text"
                         onClick={() => handleToggleSkipComposeQuestion(currentComposeQuestion.key)}
                       >
                         {composeSkipped[currentComposeQuestion.key] ? 'Unskip' : 'Skip'}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleComposeNext}
+                        disabled={composeQuestionsLoading || composeStep >= composeQuestionCount - 1}
+                        sx={{ borderRadius: 999, minWidth: 92 }}
+                      >
+                        Next
                       </Button>
                     </Box>
                   </CardContent>
@@ -1053,9 +1098,6 @@ function BusinessTemplatePage() {
           <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
             <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={handleComposeBack} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep === 0}>
               Back
-            </Button>
-            <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={handleComposeNext} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep >= composeQuestionCount - 1}>
-              Next
             </Button>
             <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={resetComposeModal}>Cancel</Button>
             <Button

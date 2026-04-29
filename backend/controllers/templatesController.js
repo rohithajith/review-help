@@ -253,6 +253,7 @@ exports.getComposeQuestions = async (req, res, next) => {
     const { questions, source } = await reviewAssistService.getComposeQuestions({
       businessProfile,
       adminQuestions: businessProfile.compose_questions,
+      allowAiGeneration: false,
     });
     return res.json({ questions, source });
   } catch (err) {

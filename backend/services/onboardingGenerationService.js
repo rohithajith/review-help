@@ -20,6 +20,7 @@ if (!fetchFn) {
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || 'google/gemma-3-27b-it:free';
+const SECOND_FALLBACK_MODEL = process.env.OPENROUTER_SECOND_FALLBACK_MODEL || 'openai/gpt-4o-mini';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
@@ -166,18 +167,20 @@ async function callOpenRouter(prompt, count, model = MODEL) {
 }
 
 /**
- * Try primary model, then fallback model
+ * Try primary model, then fallback models
  */
 async function generateTemplatesWithFallback(prompt, count) {
-  // Try primary model first
-  try {
-    return await callOpenRouter(prompt, count, MODEL);
-  } catch (err) {
-    console.warn(`onboardingGenerationService: primary model failed, trying fallback: ${err.message}`);
+  const models = Array.from(new Set([MODEL, FALLBACK_MODEL, SECOND_FALLBACK_MODEL].filter(Boolean)));
+  let lastError = null;
+  for (const model of models) {
+    try {
+      return await callOpenRouter(prompt, count, model);
+    } catch (err) {
+      lastError = err;
+      console.warn(`onboardingGenerationService: model ${model} failed, trying next fallback: ${err.message}`);
+    }
   }
-  
-  // Try fallback model
-  return await callOpenRouter(prompt, count, FALLBACK_MODEL);
+  throw lastError || new Error('All onboarding generation models failed');
 }
 
 /**

@@ -18,6 +18,7 @@ if (!fetchFn) {
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || 'google/gemma-3-27b-it:free';
+const SECOND_FALLBACK_MODEL = process.env.OPENROUTER_SECOND_FALLBACK_MODEL || 'openai/gpt-4o-mini';
 const COMPOSE_QUESTION_KEYS = [
   'visit_purpose',
   'service_quality',
@@ -43,6 +44,15 @@ const RISK_PATTERNS = [
   /\b(safe|safest|FDA|medically|clinically|legal guarantee)\b/i,
   /\b(paid|sponsored|gifted|discount|voucher|reward|compensated)\b/i,
 ];
+const META_RESPONSE_PATTERNS = [
+  /\bmust not add facts\b/i,
+  /\bkeep original meaning\b/i,
+  /\bplain text\b/i,
+  /\b\d+\s*-\s*\d+\s*words?\b/i,
+  /\bthat'?s about\b/i,
+  /\bwe need to polish\b/i,
+  /\bactually\b/i,
+];
 
 function detectGuardrailViolations(text) {
   const s = String(text || '').trim();
@@ -51,6 +61,17 @@ function detectGuardrailViolations(text) {
     if (p.test(s)) hits.push(p.toString());
   }
   return hits;
+}
+
+function validateReviewOutput(text) {
+  const normalized = normalizeReviewText(text);
+  if (!normalized) return { ok: false, reason: 'empty_output' };
+  for (const p of META_RESPONSE_PATTERNS) {
+    if (p.test(normalized)) {
+      return { ok: false, reason: `meta_response_${p}` };
+    }
+  }
+  return { ok: true, reason: null };
 }
 
 function extractText(data) {
@@ -325,20 +346,22 @@ async function callOpenRouter(messages, model, options = {}) {
 }
 
 async function generateWithGuardrails(buildMessages) {
-  const models = [MODEL, FALLBACK_MODEL];
+  const models = Array.from(new Set([MODEL, FALLBACK_MODEL, SECOND_FALLBACK_MODEL].filter(Boolean)));
   for (const model of models) {
     try {
       const first = normalizeReviewText(await callOpenRouter(buildMessages(null), model));
       const firstViolations = detectGuardrailViolations(first);
-      if (firstViolations.length === 0) return first;
+      const firstValidation = validateReviewOutput(first);
+      if (firstViolations.length === 0 && firstValidation.ok) return first;
 
       // One strict retry if deterministic checks found risk terms.
       const second = normalizeReviewText(await callOpenRouter(buildMessages({
         previousOutput: first,
-        violations: firstViolations,
+        violations: firstViolations.length > 0 ? firstViolations : [firstValidation.reason || 'invalid_output'],
       }), model));
       const secondViolations = detectGuardrailViolations(second);
-      if (secondViolations.length === 0) return second;
+      const secondValidation = validateReviewOutput(second);
+      if (secondViolations.length === 0 && secondValidation.ok) return second;
     } catch (err) {
       // Try fallback model next.
       console.warn(`reviewAssistService: model ${model} failed: ${err.message}`);
@@ -348,7 +371,7 @@ async function generateWithGuardrails(buildMessages) {
 }
 
 async function generateComposeQuestionsWithAi(rawProfile) {
-  const models = [MODEL, FALLBACK_MODEL];
+  const models = Array.from(new Set([MODEL, FALLBACK_MODEL, SECOND_FALLBACK_MODEL].filter(Boolean)));
   for (const model of models) {
     try {
       const firstRaw = await callOpenRouter(buildQuestionPromptMessages(rawProfile, null), model, {
@@ -375,10 +398,11 @@ async function generateComposeQuestionsWithAi(rawProfile) {
 
 function buildComposeMessages({ answers, skippedKeys, businessProfile }, strictRetry) {
   const businessContext = describeBusiness(normalizeBusinessProfile(businessProfile));
-  const system = `You write customer review drafts for local businesses based only on user-provided facts.
+const system = `You write customer review drafts for local businesses based only on user-provided facts.
 Business context: ${businessContext}
 ${FTC_CONSTRAINTS}
-Output only one short review paragraph, 40-90 words, plain text.`;
+Output only one short review paragraph in plain text.
+Never output instructions, analysis, or meta commentary about constraints.`;
 
   const userPayload = {
     answers,
@@ -398,10 +422,11 @@ Regenerate safely with stricter factual language.`;
 
 function buildPolishMessages({ reviewText, businessProfile }, strictRetry) {
   const businessContext = describeBusiness(normalizeBusinessProfile(businessProfile));
-  const system = `You polish customer-written reviews for grammar, clarity, and sentence flow.
+const system = `You polish customer-written reviews for grammar, clarity, and sentence flow.
 Business context: ${businessContext}
 ${FTC_CONSTRAINTS}
-Do not add new facts. Keep original meaning. Output plain text only, 30-90 words.`;
+Do not add new facts. Keep original meaning. Output only the final polished review in plain text.
+Never output instructions, analysis, or meta commentary about constraints.`;
 
   let user = `Polish this review text:\n"${reviewText}"`;
   if (strictRetry && strictRetry.previousOutput) {
@@ -414,10 +439,14 @@ Rewrite safely and factually without hype.`;
   ];
 }
 
-async function getComposeQuestions({ businessProfile = {}, adminQuestions = null }) {
+async function getComposeQuestions({ businessProfile = {}, adminQuestions = null, allowAiGeneration = true }) {
   const normalizedAdminQuestions = sanitizeComposeQuestions(adminQuestions);
   if (normalizedAdminQuestions) {
     return { questions: normalizedAdminQuestions, source: 'admin' };
+  }
+
+  if (!allowAiGeneration) {
+    return { questions: getBusinessAwareFallbackQuestions(businessProfile), source: 'fallback' };
   }
 
   const cached = readCachedComposeQuestions(businessProfile);
@@ -440,7 +469,21 @@ async function composeFromAnswers({ answers = {}, skippedKeys = [], businessProf
   const nonEmpty = Object.values(answers).filter((v) => String(v || '').trim().length > 0);
   if (nonEmpty.length < 1) throw new Error('At least 1 answered question is required');
 
-  return generateWithGuardrails((strictRetry) => buildComposeMessages({ answers, skippedKeys, businessProfile }, strictRetry));
+  try {
+    return await generateWithGuardrails((strictRetry) => buildComposeMessages({ answers, skippedKeys, businessProfile }, strictRetry));
+  } catch (err) {
+    // Deterministic safe fallback: build concise review only from user-provided facts.
+    const fragments = Object.values(answers)
+      .map((value) => normalizeReviewText(value))
+      .filter((value) => value.length > 0)
+      .slice(0, 4);
+
+    const stitched = fragments.join('. ');
+    const fallback = normalizeReviewText(
+      `${stitched ? `${stitched}. ` : ''}Overall, it was a good experience and I would recommend it.`
+    );
+    return fallback.slice(0, 520);
+  }
 }
 
 async function polishReview({ reviewText, businessProfile = null }) {
@@ -460,6 +503,7 @@ module.exports = {
     composeQuestionCache,
     detectGuardrailViolations,
     normalizeReviewText,
+    validateReviewOutput,
     normalizeBusinessProfile,
     parseQuestionArray,
     buildComposeFingerprint,

@@ -15,6 +15,7 @@ if (!fetchFn) {
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || 'google/gemma-3-27b-it:free';
+const SECOND_FALLBACK_MODEL = process.env.OPENROUTER_SECOND_FALLBACK_MODEL || 'openai/gpt-4o-mini';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 const SIMILARITY_THRESHOLD = 0.85; // >85% similarity rejected
@@ -138,7 +139,7 @@ async function callOpenRouterSingleModel(inputsArray, modelName) {
 }
 
 async function callOpenRouterWithRetries(inputsArray) {
-  const models = [MODEL, FALLBACK_MODEL];
+  const models = Array.from(new Set([MODEL, FALLBACK_MODEL, SECOND_FALLBACK_MODEL].filter(Boolean)));
   
   for (const modelName of models) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
