@@ -256,12 +256,23 @@ const AdminDashboard = () => {
         }))
         .filter((p) => p.name || p.url);
 
+      let persistedLogoUrl = logoUrl || null;
+      if (persistedLogoUrl && String(persistedLogoUrl).startsWith('data:image/')) {
+        const uploadResponse = await api.post(`/businesses/${selectedBusinessId}/logo`, {
+          logoDataUrl: persistedLogoUrl,
+        });
+        persistedLogoUrl = String(uploadResponse?.data?.logoUrl || '').trim() || null;
+        if (!persistedLogoUrl) {
+          throw new Error('Logo upload succeeded but no public URL was returned.');
+        }
+      }
+
       // Save to backend
       if (selectedBusinessId) {
         await api.put(`/${selectedBusinessId}/business`, {
           name: String(businessName || '').trim(),
           google_review_url: normalizeUrl(googleReviewUrl),
-          logo_url: logoUrl || null,
+          logo_url: persistedLogoUrl,
           welcome_message: String(welcomeMessage || '').trim(),
           review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
         });
@@ -269,19 +280,20 @@ const AdminDashboard = () => {
       // Also save to localStorage for quick access
       const settings = {
         googleReviewUrl: normalizeUrl(googleReviewUrl),
-        logoUrl,
+        logoUrl: persistedLogoUrl || '',
         businessName: String(businessName || '').trim(),
         welcomeMessage: String(welcomeMessage || '').trim(),
         reviewPlatforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
         businessId: selectedBusinessId
       };
       localStorage.setItem('settings', JSON.stringify(settings));
+      setLogoUrl(persistedLogoUrl || '');
       setReviewPlatforms(settings.reviewPlatforms);
       setAlertMessage('Settings saved successfully');
       setAlertVariant('success');
     } catch (err) {
       console.error('Error saving settings:', err);
-      setAlertMessage('Error saving settings');
+      setAlertMessage(err?.response?.data?.error || err?.response?.data?.detail || 'Error saving settings');
       setAlertVariant('danger');
     }
   };
@@ -403,9 +415,8 @@ const AdminDashboard = () => {
       setAlertVariant('danger');
       return;
     }
-    // Protect save payload: backend JSON body limit is 100KB by default.
-    if (file.size > 70 * 1024) {
-      setAlertMessage('Logo is too large. Please use an image under 70KB.');
+    if (file.size > 2 * 1024 * 1024) {
+      setAlertMessage('Logo is too large. Please use an image under 2MB.');
       setAlertVariant('danger');
       return;
     }
@@ -454,7 +465,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <Container maxWidth="xl">
+    <Container maxWidth="xl" sx={{ px: { xs: 1.25, sm: 2.5 }, py: { xs: 1, sm: 2 } }}>
       {/* Alert Snackbar */}
       <Snackbar
         open={!!alertMessage}
@@ -478,7 +489,7 @@ const AdminDashboard = () => {
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           {/* Business Card */}
-          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="Business"
               sx={{
@@ -521,7 +532,7 @@ const AdminDashboard = () => {
           )}
 
           {/* Templates Card */}
-          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="Templates"
               sx={{
@@ -530,7 +541,7 @@ const AdminDashboard = () => {
               }}
             />
             <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
@@ -549,7 +560,7 @@ const AdminDashboard = () => {
                 </Button>
               </Box>
 
-              <TableContainer component={Paper} sx={{ maxHeight: '48vh' }}>
+              <TableContainer component={Paper} sx={{ maxHeight: '48vh', overflowX: 'auto' }}>
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
@@ -598,7 +609,7 @@ const AdminDashboard = () => {
           </Card>
 
           {/* Backup Templates Card */}
-          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="Backup Templates"
               sx={{
@@ -607,7 +618,7 @@ const AdminDashboard = () => {
               }}
             />
             <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
@@ -617,7 +628,7 @@ const AdminDashboard = () => {
                 </Button>
               </Box>
 
-              <TableContainer component={Paper} sx={{ maxHeight: '48vh' }}>
+              <TableContainer component={Paper} sx={{ maxHeight: '48vh', overflowX: 'auto' }}>
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
@@ -661,7 +672,7 @@ const AdminDashboard = () => {
 
         <Grid item xs={12} md={6}>
           {/* Branding & Links Card */}
-          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="Branding & Links"
               sx={{
@@ -681,7 +692,7 @@ const AdminDashboard = () => {
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
                 Company Logo
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, mb: 2, flexWrap: 'wrap', '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } } }}>
                 <Button component="label" variant="outlined" size="small">
                   Upload Logo
                   <input type="file" accept="image/*" hidden onChange={handleLogoFileUpload} />
@@ -728,13 +739,13 @@ const AdminDashboard = () => {
               </Typography>
 
               {reviewPlatforms.map((platform, index) => (
-                <Box key={index} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-start' }}>
+                <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(140px, 0.38fr) 1fr auto auto' }, gap: 1, mb: 2, alignItems: 'center' }}>
                   <TextField
                     size="small"
                     label="Platform Name"
                     value={platform.name}
                     onChange={e => handlePlatformChange(index, 'name', e.target.value)}
-                    sx={{ width: '30%' }}
+                    fullWidth
                     placeholder="e.g., Google, TripAdvisor"
                   />
                   <TextField
@@ -742,7 +753,7 @@ const AdminDashboard = () => {
                     label="Review URL"
                     value={platform.url}
                     onChange={e => handlePlatformChange(index, 'url', e.target.value)}
-                    sx={{ flexGrow: 1 }}
+                    fullWidth
                     placeholder="https://..."
                   />
                   <IconButton
@@ -800,7 +811,7 @@ const AdminDashboard = () => {
 
               <Divider sx={{ my: 3 }} />
 
-              <Box sx={{ display: 'flex', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } } }}>
                 <Button
                   variant="contained"
                   startIcon={<SaveIcon />}
@@ -826,7 +837,7 @@ const AdminDashboard = () => {
           </Card>
 
           {/* Logs Card */}
-          <Card sx={{ mb: 3, borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="My Reviews"
               action={(
@@ -864,7 +875,7 @@ const AdminDashboard = () => {
               )}
 
               {selectedBusinessId && !reviewsLoading && reviews.length > 0 && (
-                <TableContainer component={Paper} sx={{ maxHeight: '40vh' }}>
+                <TableContainer component={Paper} sx={{ maxHeight: '40vh', overflowX: 'auto' }}>
                   <Table stickyHeader size="small">
                     <TableHead>
                       <TableRow>
@@ -893,7 +904,7 @@ const AdminDashboard = () => {
           </Card>
 
           {/* Logs Card */}
-          <Card sx={{ borderRadius: 2, boxShadow: '0 6px 18px rgba(41, 54, 67, 0.08)' }}>
+          <Card sx={{ borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
             <CardHeader
               title="Logs"
               sx={{
@@ -930,7 +941,7 @@ const AdminDashboard = () => {
             onChange={e => setCurrentTemplate({ text: e.target.value })}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowCreateModal(false)}>
             Cancel
           </Button>
@@ -953,7 +964,7 @@ const AdminDashboard = () => {
         <DialogContent dividers>
           <TemplateSharePanel businessId={selectedBusinessId} />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button
             variant="contained"
             onClick={() => {
@@ -988,7 +999,7 @@ const AdminDashboard = () => {
             onChange={e => setCurrentTemplate({ ...currentTemplate, text: e.target.value })}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowEditModal(false)}>
             Cancel
           </Button>
@@ -1015,7 +1026,7 @@ const AdminDashboard = () => {
             Are you sure you want to delete this template? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowDeleteConfirm(false)}>
             Cancel
           </Button>
@@ -1042,7 +1053,7 @@ const AdminDashboard = () => {
             Are you sure you want to delete the selected templates? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowBulkDeleteConfirm(false)}>
             Cancel
           </Button>

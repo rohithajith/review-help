@@ -1,5 +1,6 @@
 const { getAdminPool } = require('../tenantManager');
 const { sanitizeComposeQuestions } = require('../services/reviewAssistService');
+const supabase = require('../lib/supabaseClient');
 
 /**
  * Business Controller for Supabase Shared DB
@@ -144,6 +145,94 @@ exports.updateBusiness = async (req, res, next) => {
       return res.status(404).json({ error: 'Business not found' });
     }
     res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.uploadLogo = async (req, res, next) => {
+  const businessId = req.businessId || req.params.businessId;
+  const rawDataUrl = String(req.body?.logoDataUrl || '').trim();
+
+  if (!businessId) {
+    return res.status(400).json({ error: 'businessId is required' });
+  }
+  if (!rawDataUrl) {
+    return res.status(400).json({ error: 'logoDataUrl is required' });
+  }
+
+  const match = rawDataUrl.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i);
+  if (!match) {
+    return res.status(400).json({ error: 'Invalid logo format. Expected a PNG/JPEG/WEBP data URL.' });
+  }
+
+  const contentType = String(match[1]).toLowerCase();
+  const base64Payload = match[2];
+  const buffer = Buffer.from(base64Payload, 'base64');
+  if (!buffer.length) {
+    return res.status(400).json({ error: 'Logo data is empty' });
+  }
+  if (buffer.length > 2 * 1024 * 1024) {
+    return res.status(400).json({ error: 'Logo image is too large. Please keep it under 2MB.' });
+  }
+
+  const extension = contentType.includes('png')
+    ? 'png'
+    : (contentType.includes('webp') ? 'webp' : 'jpg');
+  const bucket = String(process.env.SUPABASE_LOGO_BUCKET || 'business-logos').trim();
+  const objectPath = `${businessId}/logo-${Date.now()}.${extension}`;
+
+  try {
+    if (!supabase?.storage?.from) {
+      return res.status(500).json({ error: 'Supabase Storage is not configured on the server' });
+    }
+
+    const uploadOnce = () => supabase
+      .storage
+      .from(bucket)
+      .upload(objectPath, buffer, {
+        contentType,
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    let { error: uploadError } = await uploadOnce();
+
+    // Auto-create missing bucket on first use, then retry upload once.
+    if (uploadError && /bucket.*not.*found/i.test(String(uploadError.message || ''))) {
+      const { error: createBucketError } = await supabase.storage.createBucket(bucket, { public: true });
+      if (createBucketError && !/already exists/i.test(String(createBucketError.message || ''))) {
+        return res.status(500).json({
+          error: 'Failed to create storage bucket for logos',
+          detail: createBucketError.message || String(createBucketError),
+        });
+      }
+      ({ error: uploadError } = await uploadOnce());
+    }
+
+    if (uploadError) {
+      return res.status(500).json({
+        error: 'Failed to upload logo to storage',
+        detail: uploadError.message || String(uploadError),
+      });
+    }
+
+    const { data: publicData } = supabase
+      .storage
+      .from(bucket)
+      .getPublicUrl(objectPath);
+
+    const logoUrl = publicData?.publicUrl || null;
+    if (!logoUrl) {
+      return res.status(500).json({ error: 'Logo uploaded but public URL could not be generated' });
+    }
+
+    return res.status(201).json({
+      success: true,
+      logoUrl,
+      bucket,
+      objectPath,
+    });
   } catch (err) {
     next(err);
   }

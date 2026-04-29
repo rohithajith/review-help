@@ -579,7 +579,7 @@ function BusinessTemplatePage() {
 
         {/* Admin Button - visible only for logged-out visitors */}
         {authResolved && !isLoggedIn && (
-          <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+          <Box sx={{ position: 'fixed', bottom: { xs: 76, sm: 16 }, right: { xs: 10, sm: 16 }, zIndex: 1000 }}>
             <Button
               variant="outlined"
               size="small"
@@ -589,6 +589,7 @@ function BusinessTemplatePage() {
                 opacity: 0.7,
                 '&:hover': { opacity: 1 },
                 backgroundColor: 'rgba(255,255,255,0.9)',
+                borderRadius: 999,
               }}
             >
               Admin
@@ -610,7 +611,7 @@ function BusinessTemplatePage() {
           elevation={0}
           sx={{
             borderRadius: 4,
-            border: '1px solid rgba(148, 163, 184, 0.28)',
+            border: '1px solid rgba(148, 163, 184, 0.18)',
             background: 'rgba(255, 255, 255, 0.74)',
             backdropFilter: 'blur(10px)',
             boxShadow: '0 24px 48px rgba(15, 23, 42, 0.10)',
@@ -633,7 +634,7 @@ function BusinessTemplatePage() {
             sx={{
               p: { xs: 2, md: 2.5 },
               borderRadius: 3,
-              border: '1px solid rgba(203, 213, 225, 0.9)',
+              border: '1px solid rgba(203, 213, 225, 0.65)',
               backgroundColor: '#ffffff',
               boxShadow: '0 10px 22px rgba(15, 23, 42, 0.06)',
               mb: 2.5,
@@ -674,20 +675,14 @@ function BusinessTemplatePage() {
                       borderRadius: 2,
                       backgroundColor: '#fff',
                     },
-                    '& .MuiInputBase-inputMultiline': {
-                      pb: 7,
-                    },
                   }}
                 />
                 <Box
                   sx={{
-                    position: 'absolute',
-                    left: 14,
-                    bottom: 12,
                     display: 'flex',
+                    flexWrap: 'wrap',
                     gap: 1,
-                    zIndex: 1,
-                    pointerEvents: 'none',
+                    mt: 1.2,
                   }}
                 >
                   <Button
@@ -696,11 +691,12 @@ function BusinessTemplatePage() {
                     startIcon={<AutoAwesomeIcon />}
                     onClick={handleCompose}
                     sx={{
-                      pointerEvents: 'auto',
                       borderColor: 'rgba(16, 185, 129, 0.6)',
                       color: '#059669',
                       backgroundColor: 'rgba(236, 253, 245, 0.95)',
                       borderRadius: 999,
+                      flex: { xs: '1 1 auto', sm: '0 0 auto' },
+                      minWidth: { xs: '48%', sm: 0 },
                       '&:hover': {
                         borderColor: '#059669',
                         backgroundColor: 'rgba(220, 252, 231, 0.95)',
@@ -716,11 +712,12 @@ function BusinessTemplatePage() {
                     onClick={handlePolishOwnReview}
                     disabled={!ownReviewText.trim() || polishLoading}
                     sx={{
-                      pointerEvents: 'auto',
                       borderColor: 'rgba(16, 185, 129, 0.6)',
                       color: '#059669',
                       backgroundColor: 'rgba(236, 253, 245, 0.95)',
                       borderRadius: 999,
+                      flex: { xs: '1 1 auto', sm: '0 0 auto' },
+                      minWidth: { xs: '48%', sm: 0 },
                       '&:hover': {
                         borderColor: '#059669',
                         backgroundColor: 'rgba(220, 252, 231, 0.95)',
@@ -739,12 +736,12 @@ function BusinessTemplatePage() {
               <Typography variant="caption" sx={{ color: '#64748b' }}>
                 {ownReviewText.trim().length} characters
               </Typography>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Box />
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   onClick={handleSubmitOwnReview}
                   disabled={submitting || !rating || !ownReviewText.trim()}
+                  sx={{ minWidth: 120, borderRadius: 2 }}
                 >
                   Review
                 </Button>
@@ -792,6 +789,7 @@ function BusinessTemplatePage() {
                   label="Tap any template to edit"
                   color="primary"
                   variant="outlined"
+                  sx={{ maxWidth: '100%' }}
                 />
               </Stack>
 
@@ -919,7 +917,7 @@ function BusinessTemplatePage() {
                   {revokeToken}
                 </Typography>
                 <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
-                  To remove your review go to app.reviewhelp.uk/revoke and paste your token.
+                  To remove your review go to reviewhelp.uk/revoke and paste your token.
                 </Typography>
               </Box>
             )}
@@ -996,7 +994,7 @@ function BusinessTemplatePage() {
 
         <Dialog open={showComposeModal} onClose={resetComposeModal} maxWidth="md" fullWidth>
           <DialogTitle>Compose Review With AI</DialogTitle>
-          <DialogContent>
+          <DialogContent sx={{ px: { xs: 2, sm: 3 } }}>
             {composeQuestionsLoading ? (
               <Box sx={{ py: 4, textAlign: 'center' }}>
                 <CircularProgress size={24} />
@@ -1052,18 +1050,19 @@ function BusinessTemplatePage() {
               <Alert severity="warning">No compose questions available right now.</Alert>
             )}
           </DialogContent>
-          <DialogActions sx={{ p: 2 }}>
-            <Button onClick={handleComposeBack} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep === 0}>
+          <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
+            <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={handleComposeBack} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep === 0}>
               Back
             </Button>
-            <Button onClick={handleComposeNext} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep >= composeQuestionCount - 1}>
+            <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={handleComposeNext} disabled={composeQuestionsLoading || !currentComposeQuestion || composeStep >= composeQuestionCount - 1}>
               Next
             </Button>
-            <Button onClick={resetComposeModal}>Cancel</Button>
+            <Button sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }} onClick={resetComposeModal}>Cancel</Button>
             <Button
               variant="contained"
               onClick={handleGenerateComposeReview}
               disabled={composeQuestionsLoading || !currentComposeQuestion || composeLoading || answeredComposeCount < 1}
+              sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }}
             >
               {composeLoading ? 'Generating...' : 'Generate Review'}
             </Button>

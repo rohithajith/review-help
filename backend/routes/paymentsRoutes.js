@@ -46,7 +46,7 @@ function resolveFrontendUrl(req) {
   }
 
   // Production-safe fallback for hosted deployment.
-  return 'https://app.reviewhelp.uk';
+  return 'https://reviewhelp.uk';
 }
 
 // Plan configuration: all signup plans are paid subscriptions.

@@ -54,6 +54,9 @@ router.post('/generation/trigger-all', requireAdminApiKey, asyncHandler(async (r
 // Get plan for a specific business
 router.get('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.getPlan));
 
+// Upload a business logo to persistent storage (Supabase Storage)
+router.post('/:businessId/logo', authMiddleware, attachBusinessContext, ownerMiddleware, asyncHandler(businessController.uploadLogo));
+
 // Update plan for a business (owner only in production; open in dev for testing)
 router.put('/:businessId/plan', authMiddleware, attachBusinessContext, ownerMiddleware, requireAdminApiKey, asyncHandler(businessController.updatePlan));
 

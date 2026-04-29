@@ -520,31 +520,40 @@ const BusinessAdmin = ({ businessId }) => {
         }))
         .filter((p) => p.name || p.url);
 
-      // Save logo locally only to avoid large base64 payload errors.
-      writeBusinessLocalLogo(businessId, logoUrl || '');
+      let persistedLogoUrl = logoUrl || '';
+      if (persistedLogoUrl && persistedLogoUrl.startsWith('data:image/')) {
+        const uploadResponse = await api.post(`/businesses/${businessId}/logo`, {
+          logoDataUrl: persistedLogoUrl,
+        });
+        persistedLogoUrl = String(uploadResponse?.data?.logoUrl || '').trim();
+        if (!persistedLogoUrl) {
+          throw new Error('Logo upload succeeded but no public URL was returned.');
+        }
+      }
 
       await api.put(`/${businessId}/business`, {
         name: normalizedBusinessName,
+        logo_url: persistedLogoUrl || null,
         review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
       });
+
+      writeBusinessLocalLogo(businessId, persistedLogoUrl || '');
       setBusiness((prev) => ({
         ...(prev || {}),
         name: normalizedBusinessName || prev?.name || '',
-        logo_url: logoUrl || '',
+        logo_url: persistedLogoUrl || '',
         review_platforms: normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS,
       }));
       setBusinessName(normalizedBusinessName);
+      setLogoUrl(persistedLogoUrl || '');
       setReviewPlatforms(normalizedPlatforms.length > 0 ? normalizedPlatforms : DEFAULT_REVIEW_PLATFORMS);
-      setAlertMessage('Branding and links saved successfully. Logo is stored locally on this browser.');
+      setAlertMessage('Branding and links saved successfully.');
       setAlertVariant('success');
       dispatchBusinessAdminUpdate('business');
     } catch (err) {
       console.error('Error saving business settings:', err);
-      // Keep local logo even if remote update fails.
-      writeBusinessLocalLogo(businessId, logoUrl || '');
-      setBusiness((prev) => ({ ...(prev || {}), logo_url: logoUrl || '' }));
-      setAlertMessage('Logo saved locally, but failed to save name/links to Supabase.');
-      setAlertVariant('warning');
+      setAlertMessage(err?.response?.data?.error || err?.response?.data?.detail || 'Failed to save branding and links.');
+      setAlertVariant('error');
       dispatchBusinessAdminUpdate('business');
     }
   };
@@ -672,8 +681,8 @@ const BusinessAdmin = ({ businessId }) => {
 
   const cardSx = {
     borderRadius: 2,
-    border: '1px solid #d7deea',
-    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.05)',
+    border: '1px solid rgba(215, 222, 234, 0.72)',
+    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
     backgroundColor: '#ffffff',
   };
 
@@ -690,19 +699,21 @@ const BusinessAdmin = ({ businessId }) => {
 
   const tableShellSx = {
     maxHeight: '50vh',
-    border: '1px solid #e2e8f0',
+    border: '1px solid rgba(226, 232, 240, 0.75)',
     boxShadow: 'none',
     borderRadius: 1.5,
+    overflowX: 'auto',
   };
 
   return (
     <Container
       maxWidth="xl"
       sx={{
-        py: 3,
+        py: { xs: 2, md: 3 },
         fontFamily: '"Space Grotesk", "Manrope", sans-serif',
         backgroundColor: '#f2f4f8',
         minHeight: '100vh',
+        px: { xs: 1.25, sm: 2.5 },
       }}
     >
       {/* Alert Snackbar */}
@@ -739,7 +750,7 @@ const BusinessAdmin = ({ businessId }) => {
           variant="outlined"
           startIcon={<ArrowBackIcon />}
           onClick={() => window.location.hash = `#/business/${businessId}`}
-          sx={{ borderRadius: 1 }}
+          sx={{ borderRadius: 1, width: { xs: '100%', sm: 'auto' } }}
         >
           Back to Templates
         </Button>
@@ -750,7 +761,7 @@ const BusinessAdmin = ({ businessId }) => {
             const templateUrl = `${window.location.origin}${window.location.pathname}#/business/${businessId}`;
             window.open(templateUrl, '_blank', 'noopener,noreferrer');
           }}
-          sx={{ borderRadius: 1, textTransform: 'none' }}
+          sx={{ borderRadius: 1, textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
         >
           Template page
         </Button>
@@ -773,7 +784,7 @@ const BusinessAdmin = ({ businessId }) => {
           startIcon={<LogoutIcon />}
           onClick={handleLogout}
           size="small"
-          sx={{ borderRadius: 1 }}
+          sx={{ borderRadius: 1, width: { xs: '100%', sm: 'auto' } }}
         >
           Logout
         </Button>
@@ -984,7 +995,7 @@ const BusinessAdmin = ({ businessId }) => {
               sx={cardHeaderSx}
             />
             <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
@@ -1056,7 +1067,7 @@ const BusinessAdmin = ({ businessId }) => {
               sx={cardHeaderSx}
             />
             <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   color="warning"
@@ -1215,7 +1226,7 @@ const BusinessAdmin = ({ businessId }) => {
         <DialogContent dividers>
           <TemplateSharePanel businessId={businessId} />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button
             variant="contained"
             onClick={() => {
@@ -1309,7 +1320,7 @@ const BusinessAdmin = ({ businessId }) => {
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowLogoCropDialog(false)}>
             Cancel
           </Button>
@@ -1342,7 +1353,7 @@ const BusinessAdmin = ({ businessId }) => {
             helperText={`${currentTemplate.text.split(/\s+/).filter(w => w).length} words`}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowCreateModal(false)}>
             Cancel
           </Button>
@@ -1374,7 +1385,7 @@ const BusinessAdmin = ({ businessId }) => {
             helperText={`${currentTemplate.text?.split(/\s+/).filter(w => w).length || 0} words`}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowEditModal(false)}>
             Cancel
           </Button>
@@ -1400,7 +1411,7 @@ const BusinessAdmin = ({ businessId }) => {
             Are you sure you want to delete this template? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button variant="outlined" onClick={() => setShowDeleteConfirm(false)}>
             Cancel
           </Button>

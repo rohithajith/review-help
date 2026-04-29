@@ -22,8 +22,8 @@ describe('templateShare utils', () => {
   });
 
   test('builds template and short URLs with production origin', () => {
-    expect(buildTemplatePageUrl(42, { isProd: true })).toBe('https://app.reviewhelp.uk/#/business/42');
-    expect(buildShortTemplatePageUrl(42, { isProd: true })).toBe('https://app.reviewhelp.uk/#/b/16');
+    expect(buildTemplatePageUrl(42, { isProd: true })).toBe('https://reviewhelp.uk/#/business/42');
+    expect(buildShortTemplatePageUrl(42, { isProd: true })).toBe('https://reviewhelp.uk/#/b/16');
   });
 
   test('builds URLs with current origin in non-production mode', () => {

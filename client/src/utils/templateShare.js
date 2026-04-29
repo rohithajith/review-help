@@ -1,4 +1,4 @@
-const PROD_SHARE_ORIGIN = 'https://app.reviewhelp.uk';
+const PROD_SHARE_ORIGIN = 'https://reviewhelp.uk';
 const SHARE_QR_SEEN_PREFIX = 'shareQrSeen:';
 
 function getRuntimeIsProd() {

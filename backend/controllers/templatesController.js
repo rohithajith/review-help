@@ -169,7 +169,7 @@ exports.submitReview = async (req, res, next) => {
       message: 'Review taken',
       review: inserted.rows[0],
       revokeToken: revokeToken || null,
-      revokeInstructions: revokeToken ? 'To remove your review go to app.reviewhelp.uk/revoke and paste your token' : null,
+      revokeInstructions: revokeToken ? 'To remove your review go to reviewhelp.uk/revoke and paste your token' : null,
       revokeAvailable: Boolean(revokeToken),
       consentStatementVersion: consentAccepted ? CONSENT_STATEMENT_VERSION : null,
     });
@@ -250,13 +250,11 @@ exports.getComposeQuestions = async (req, res, next) => {
       return res.status(404).json({ message: 'Business not found' });
     }
 
-    const dbQuestions = reviewAssistService.sanitizeComposeQuestions(businessProfile.compose_questions);
-    if (!dbQuestions) {
-      return res.status(503).json({
-        message: 'Compose questions are not ready yet. Please try again shortly.',
-      });
-    }
-    return res.json({ questions: dbQuestions, source: 'db' });
+    const { questions, source } = await reviewAssistService.getComposeQuestions({
+      businessProfile,
+      adminQuestions: businessProfile.compose_questions,
+    });
+    return res.json({ questions, source });
   } catch (err) {
     return next(err);
   }

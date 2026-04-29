@@ -42,6 +42,16 @@ const BUSINESS_CATEGORIES = {
   ]
 };
 const VALID_SIGNUP_PLANS = new Set(['Starter', 'Pro', 'Pro Max']);
+const SIGNUP_PLAN_PRICING = {
+  Starter: '£29/month (includes 7-day free trial)',
+  Pro: '£39/month',
+  'Pro Max': '£49/month',
+};
+const SIGNUP_PLAN_PAYMENT_LINKS = {
+  Starter: 'https://buy.stripe.com/dRmcN5gZk8GD9QK94fb7y00',
+  Pro: 'https://buy.stripe.com/cNi00j6kGg95d2Wa8jb7y02',
+  'Pro Max': 'https://buy.stripe.com/aFa7sL10m9KHbYS80bb7y01',
+};
 
 export default function Signup() {
   const [activeStep, setActiveStep] = useState(0);
@@ -54,6 +64,7 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedPlan, setSelectedPlan] = useState('Starter');
+  const selectedPlanPrice = SIGNUP_PLAN_PRICING[selectedPlan] || SIGNUP_PLAN_PRICING.Starter;
 
   // Read plan from URL on mount
   useEffect(() => {
@@ -189,6 +200,13 @@ export default function Signup() {
           }
 
           // New signups must complete checkout before dashboard access.
+          const paymentLink = SIGNUP_PLAN_PAYMENT_LINKS[pendingPlan] || SIGNUP_PLAN_PAYMENT_LINKS[normalizedPlan];
+          if (paymentLink) {
+            window.location.href = paymentLink;
+            return;
+          }
+
+          // Fallback to dynamic checkout session if a direct payment link is unavailable.
           try {
             const checkout = await api.post('/payments/create-checkout-session', {
               plan: pendingPlan,
@@ -346,6 +364,9 @@ export default function Signup() {
               <Typography variant="body2" color="text.secondary">
                 Plan: <strong>{selectedPlan}</strong>
               </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Price: <strong>{selectedPlanPrice}</strong>
+              </Typography>
               <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1 }}>
                 ✨ AI will generate personalized review templates for your {(isOtherCategory ? customDescription : businessCategory).toLowerCase()}
               </Typography>
@@ -358,19 +379,19 @@ export default function Signup() {
   };
 
   return (
-    <Box sx={{ maxWidth: 520, mx: 'auto', mt: 4, p: 3 }}>
+    <Box sx={{ maxWidth: 520, mx: 'auto', mt: { xs: 1.5, md: 4 }, p: { xs: 2, md: 3 } }}>
       <Typography variant="h5" sx={{ mb: 1 }}>Create an account</Typography>
       
       {selectedPlan && (
-        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2, alignItems: { xs: 'flex-start', sm: 'center' } }}>
           <Typography variant="body2" color="text.secondary">Selected plan:</Typography>
-          <Chip label={selectedPlan} color="primary" size="small" />
+          <Chip label={`${selectedPlan} - ${selectedPlanPrice}`} color="primary" size="small" />
         </Stack>
       )}
       
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       
-      <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+      <Stepper activeStep={activeStep} alternativeLabel={false} sx={{ mb: 3 }}>
         {steps.map((label) => (
           <Step key={label}>
             <StepLabel>{label}</StepLabel>
@@ -381,10 +402,11 @@ export default function Signup() {
       <form onSubmit={handleSubmit}>
         {renderStepContent(activeStep)}
         
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3, gap: 1, flexWrap: 'wrap' }}>
           <Button 
             disabled={activeStep === 0} 
             onClick={handleBack}
+            sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }}
           >
             Back
           </Button>
@@ -394,6 +416,7 @@ export default function Signup() {
               variant="contained" 
               onClick={handleNext}
               disabled={activeStep === 0 ? !canProceedStep0 : !canProceedStep1}
+              sx={{ flex: { xs: '1 1 48%', sm: '0 0 auto' } }}
             >
               Next
             </Button>
@@ -403,6 +426,7 @@ export default function Signup() {
               variant="contained" 
               disabled={loading || !canSubmit}
               startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               {loading ? 'Creating...' : 'Create & Continue to Payment'}
             </Button>

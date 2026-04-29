@@ -18,13 +18,16 @@ export default function Pricing() {
   const plans = [
     {
       name: 'Starter',
-      price: 'Free',
+      price: '£29',
+      period: '/month',
+      note: '7-day free trial',
       bullets: ['7-day trial', '1 business', '1 review platform', '10 active templates', 'Basic analytics', 'Email support'],
       tone: 'default',
     },
     {
       name: 'Pro',
       price: '£39',
+      period: '/month',
       bullets: ['2 businesses', '2 review platforms (e.g. Google + JustEat)', 'Unlimited templates', 'AI template generation', 'Advanced analytics', 'Priority support'],
       tone: 'highlight',
       badge: 'Most popular',
@@ -32,6 +35,7 @@ export default function Pricing() {
     {
       name: 'Pro Max',
       price: '£49',
+      period: '/month',
       bullets: ['5 businesses', '3 review platforms', 'Unlimited templates', 'AI template generation', 'Advanced analytics', 'Priority support', 'Custom branding'],
       tone: 'default',
     },
@@ -76,7 +80,19 @@ export default function Pricing() {
                     )}
                   </Stack>
 
-                  <Typography variant="h3" sx={{ my: 2, fontWeight: 800 }}>{p.price}</Typography>
+                  <Typography variant="h3" sx={{ my: 2, fontWeight: 800 }}>
+                    {p.price}
+                    {p.period ? (
+                      <Typography component="span" variant="body1" sx={{ ml: 0.5, fontWeight: 600 }}>
+                        {p.period}
+                      </Typography>
+                    ) : null}
+                  </Typography>
+                  {p.note ? (
+                    <Typography variant="caption" sx={{ display: 'block', mb: 1, color: p.tone === 'highlight' ? 'rgba(255,255,255,0.92)' : 'text.secondary' }}>
+                      {p.note}
+                    </Typography>
+                  ) : null}
 
                   <List sx={{ pl: 2 }}>
                     {p.bullets.map((b) => (
@@ -97,7 +113,7 @@ export default function Pricing() {
                       ...(p.tone === 'highlight' && { bgcolor: 'rgba(255,255,255,0.12)', color: 'common.white' }),
                     }}
                   >
-                    Choose
+                    Get Started
                   </Button>
                 </CardActions>
               </Card>

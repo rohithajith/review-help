@@ -2,6 +2,8 @@
 require('dotenv').config();
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const templatesRoutes = require('./routes/templatesRoutes');
@@ -17,6 +19,8 @@ const paymentsRoutes = require('./routes/paymentsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5002;
 let infraInitPromise = null;
+const clientDistDir = path.resolve(__dirname, '../client/dist');
+const hasBuiltClient = fs.existsSync(path.join(clientDistDir, 'index.html'));
 
 function normalizeOrigin(value) {
   const raw = String(value || '').trim();
@@ -96,7 +100,9 @@ app.use(cors(corsOptions));
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // The landing page is embedded in a same-origin iframe at "/",
+  // so DENY breaks the initial app shell in production.
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
@@ -104,7 +110,7 @@ app.use((req, res, next) => {
 // Stripe webhook needs raw body for signature verification - must be before express.json()
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use('/api', apiLimiter);
 
 // Simple request logger that includes businessId when present
@@ -141,9 +147,16 @@ app.use('/api/reviews', consentRoutes);
 // Tenant-scoped routes mounted under /api/:businessId
 app.use('/api/:businessId', businessMiddleware, templatesRoutes);
 
-app.get('/', (req, res) => {
-  res.send('Review App Backend');
-});
+if (hasBuiltClient) {
+  app.use(express.static(clientDistDir));
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(clientDistDir, 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('Review App Backend');
+  });
+}
 
 // Centralized error handler
 app.use((err, req, res, next) => {
