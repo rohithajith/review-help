@@ -27,6 +27,8 @@ import {
   CircularProgress,
   Rating,
   Slider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -120,6 +122,8 @@ function normalizeUrl(raw) {
 // Requires authentication via login modal
 // =============================================================================
 const BusinessAdmin = ({ businessId }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -973,8 +977,8 @@ const BusinessAdmin = ({ businessId }) => {
                   </Box>
                 ))}
               </Box>
-              <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
-                <Button variant="contained" size="small" startIcon={<SaveIcon />} onClick={handleSaveComposeQuestions}>
+              <Box sx={{ mt: 1.5, display: 'flex', justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
+                <Button variant="contained" size="small" startIcon={<SaveIcon />} onClick={handleSaveComposeQuestions} sx={{ width: { xs: '100%', sm: 'auto' } }}>
                   Save Compose Questions
                 </Button>
               </Box>
@@ -1006,7 +1010,7 @@ const BusinessAdmin = ({ businessId }) => {
               </Box>
 
               <TableContainer component={Paper} sx={tableShellSx}>
-                <Table stickyHeader size="small">
+                <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 520 : 0, tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>Template Text</TableCell>
@@ -1023,7 +1027,7 @@ const BusinessAdmin = ({ businessId }) => {
                     ) : (
                       templates.map(template => (
                         <TableRow key={template.id} hover>
-                          <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
                             {template.text}
                           </TableCell>
                           <TableCell>
@@ -1083,7 +1087,7 @@ const BusinessAdmin = ({ businessId }) => {
               </Typography>
 
               <TableContainer component={Paper} sx={tableShellSx}>
-                <Table stickyHeader size="small">
+                <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 520 : 0, tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>Template Text</TableCell>
@@ -1100,7 +1104,7 @@ const BusinessAdmin = ({ businessId }) => {
                     ) : (
                       backupTemplates.map(template => (
                         <TableRow key={template.id} hover>
-                          <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
                             {template.text}
                           </TableCell>
                           <TableCell>
@@ -1144,7 +1148,7 @@ const BusinessAdmin = ({ businessId }) => {
           />
           <CardContent>
             <TableContainer component={Paper} sx={tableShellSx}>
-              <Table stickyHeader size="small">
+              <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 760 : 0, tableLayout: 'fixed' }}>
 	                <TableHead>
 	                  <TableRow>
 	                    <TableCell sx={{ width: 160 }}>Date</TableCell>
@@ -1170,7 +1174,7 @@ const BusinessAdmin = ({ businessId }) => {
                         <TableCell>
                           <Rating value={Number(review.rating) || 0} precision={1} readOnly size="small" />
                         </TableCell>
-	                        <TableCell sx={{ whiteSpace: 'pre-wrap' }}>
+	                        <TableCell sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
 	                          {review.review_text}
 	                        </TableCell>
                           <TableCell>

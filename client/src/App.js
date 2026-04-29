@@ -41,6 +41,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AdminDashboard from './components/AdminDashboard';
 import BusinessAdmin from './components/BusinessAdmin';
 import { resolveBusinessIdFromShortCode } from './utils/templateShare';
@@ -109,6 +111,7 @@ function BusinessTemplatePage() {
   const [templateEditorText, setTemplateEditorText] = useState('');
   const [showTemplateAssist, setShowTemplateAssist] = useState(false);
   const [busyThanksVisible, setBusyThanksVisible] = useState(false);
+  const [busyTemplateFlowLocked, setBusyTemplateFlowLocked] = useState(false);
   const [showPermissionPopup, setShowPermissionPopup] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [showComposeModal, setShowComposeModal] = useState(false);
@@ -123,6 +126,7 @@ function BusinessTemplatePage() {
   const [polishLoading, setPolishLoading] = useState(false);
   const [composeTouchStartX, setComposeTouchStartX] = useState(null);
   const [composeTouchStartY, setComposeTouchStartY] = useState(null);
+  const [consumedTemplateIds, setConsumedTemplateIds] = useState([]);
   const isErrorMessage = /could not|error|failed|forbidden|invalid|missing/i.test(String(successMessage || ''));
   const businessLogoSrc = business?.logo_url || businessLogos[businessId] || '';
 
@@ -145,6 +149,10 @@ function BusinessTemplatePage() {
   useEffect(() => {
     fetchBusinessDetails();
   }, [fetchBusinessDetails]);
+
+  useEffect(() => {
+    setConsumedTemplateIds([]);
+  }, [normalizedBusinessId]);
 
   useEffect(() => {
     let active = true;
@@ -211,9 +219,12 @@ function BusinessTemplatePage() {
 
   const visibleTemplates = useMemo(
     () => (Array.isArray(templates)
-      ? templates.filter((t) => String(t?.text || '').trim().toLowerCase() !== LEGACY_FALLBACK_TEMPLATE_TEXT.toLowerCase())
+      ? templates.filter((t) => (
+        String(t?.text || '').trim().toLowerCase() !== LEGACY_FALLBACK_TEMPLATE_TEXT.toLowerCase()
+        && !consumedTemplateIds.includes(t?.id)
+      ))
       : []),
-    [templates]
+    [templates, consumedTemplateIds]
   );
 
   useEffect(() => {
@@ -264,8 +275,8 @@ function BusinessTemplatePage() {
       text: editedText,
       templateId: selectedTemplateId,
       requireConsent: true,
-      suppressChannelPopup: true,
-      showExternalOptions: false,
+      suppressChannelPopup: false,
+      showExternalOptions: true,
     });
   };
 
@@ -302,7 +313,9 @@ function BusinessTemplatePage() {
   }, [business?.review_platforms]);
 
   const submitReviewAndOpenChannels = async ({ text, templateId = null, requireConsent = false, autoOpenChannel = null, suppressChannelPopup = false, showExternalOptions: nextShowExternalOptions = true }) => {
-    if (!text.trim() || !rating) return;
+    const hasTemplateSelection = Number.isInteger(templateId) && templateId > 0;
+    const effectiveRating = Number(rating) > 0 ? Number(rating) : (hasTemplateSelection ? 5 : 0);
+    if (!text.trim() || !effectiveRating) return;
     if (requireConsent && !consentAccepted) {
       setShowTemplateAssist(true);
       setShowPermissionPopup(true);
@@ -311,7 +324,7 @@ function BusinessTemplatePage() {
     setSubmitting(true);
     try {
       const requestBody = {
-        rating,
+        rating: effectiveRating,
         reviewText: text.trim(),
         consentAccepted: requireConsent ? consentAccepted : (consentAccepted === true),
       };
@@ -333,10 +346,12 @@ function BusinessTemplatePage() {
       setRevokeToken(savedRevokeToken);
       setRevokeAvailable(Boolean(response?.data?.revokeAvailable) || Boolean(savedRevokeToken));
       setShowExternalOptions(nextShowExternalOptions);
-      setSuccessMessage('Review submitted.');
+      setSuccessMessage('Review saved.');
       if (Number.isInteger(templateId) && templateId > 0) {
+        setConsumedTemplateIds((prev) => (prev.includes(templateId) ? prev : [...prev, templateId]));
         setShowTemplateAssist(false);
         setBusyThanksVisible(true);
+        setBusyTemplateFlowLocked(true);
       }
       if (suppressChannelPopup) {
         setShowChannelPopup(false);
@@ -345,7 +360,11 @@ function BusinessTemplatePage() {
       } else {
         setShowChannelPopup(true);
       }
-      if (typeof refresh === 'function') await refresh(businessId);
+      if (typeof refresh === 'function') {
+        Promise.resolve(refresh(businessId)).catch(() => {
+          // Non-blocking refresh; keep post-submit UX responsive.
+        });
+      }
     } catch (err) {
       console.error('Error submitting review', err);
       const backendMessage = err?.response?.data?.message
@@ -521,6 +540,10 @@ function BusinessTemplatePage() {
     }
     await openChannelWithText(channelName, lastSavedReview || ownReviewText || '');
     setShowChannelPopup(false);
+    if (busyTemplateFlowLocked) {
+      setShowTemplateAssist(false);
+      setBusyThanksVisible(true);
+    }
   };
 
   const handleSkipPostSubmitPlatforms = async () => {
@@ -534,6 +557,36 @@ function BusinessTemplatePage() {
       }
     }
     setShowChannelPopup(false);
+    if (busyTemplateFlowLocked) {
+      setShowTemplateAssist(false);
+      setBusyThanksVisible(true);
+    }
+  };
+
+  const handleCopySavedReview = async () => {
+    const textToCopy = String(lastSavedReview || ownReviewText || '').trim();
+    if (!textToCopy) {
+      setSuccessMessage('No review text available to copy.');
+      return;
+    }
+    try {
+      if (window.isSecureContext && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = textToCopy;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setSuccessMessage('Review copied to clipboard.');
+    } catch (_err) {
+      setSuccessMessage('Could not copy review. Please copy it manually.');
+    }
   };
 
   // Loading state
@@ -782,6 +835,7 @@ function BusinessTemplatePage() {
 
           <Button
             variant={showTemplateAssist ? 'contained' : 'outlined'}
+            disabled={busyTemplateFlowLocked}
             onClick={() => {
               setShowTemplateAssist((prev) => {
                 const next = !prev;
@@ -797,6 +851,7 @@ function BusinessTemplatePage() {
           {!showTemplateAssist && busyThanksVisible && (
             <Alert
               severity="success"
+              icon={<CheckCircleIcon fontSize="inherit" />}
               sx={{
                 mb: 2,
                 borderRadius: 2,
@@ -805,7 +860,14 @@ function BusinessTemplatePage() {
                 color: '#065f46',
               }}
             >
-              Thank you for Feedback
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: revokeAvailable && revokeToken ? 0.5 : 0 }}>
+                Thank you for your feedback.
+              </Typography>
+              {revokeAvailable && revokeToken && (
+                <Typography variant="body2" sx={{ color: '#065f46' }}>
+                  Revoke code: <strong>{revokeToken}</strong>
+                </Typography>
+              )}
             </Alert>
           )}
 
@@ -893,6 +955,15 @@ function BusinessTemplatePage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                   Please choose a platform below to share it:
                 </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ContentCopyIcon fontSize="small" />}
+                  onClick={handleCopySavedReview}
+                  sx={{ mb: 1.75, borderRadius: 2 }}
+                >
+                  Copy Review
+                </Button>
                 <Stack direction="column" spacing={1} sx={{ mb: 2.5, width: '100%', maxWidth: 320 }}>
                   {sharePlatforms.map((platformName) => (
                     <Button

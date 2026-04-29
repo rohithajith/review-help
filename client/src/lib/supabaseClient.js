@@ -8,17 +8,19 @@ const metaEnv = (typeof import.meta !== 'undefined' && import.meta && import.met
 const nodeEnv = (typeof process !== 'undefined' && process && process.env)
   ? process.env
   : {};
+const DEFAULT_SUPABASE_URL = 'https://qviflfdlovaxdcxbnrvm.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2aWZsZmRsb3ZheGRjeGJucnZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxOTIzNTksImV4cCI6MjA3OTc2ODM1OX0.ysuTKLiYXolW1rgqmCV-LZxnFv1OKq6weccT9bPNKdg';
 const SUPABASE_URL = (
   metaEnv.REACT_APP_SUPABASE_URL
   || metaEnv.VITE_SUPABASE_URL
   || nodeEnv.REACT_APP_SUPABASE_URL
-  || ''
+  || DEFAULT_SUPABASE_URL
 );
 const SUPABASE_ANON_KEY = (
   metaEnv.REACT_APP_SUPABASE_ANON_KEY
   || metaEnv.VITE_SUPABASE_ANON_KEY
   || nodeEnv.REACT_APP_SUPABASE_ANON_KEY
-  || ''
+  || DEFAULT_SUPABASE_ANON_KEY
 );
 
 let supabase = null;

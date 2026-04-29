@@ -58,7 +58,7 @@ export default function TemplateSharePanel({ businessId }) {
 
   return (
     <Stack spacing={2}>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 2, alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}>
         <Box
           sx={{
             border: '1px solid #d9dee7',
@@ -70,6 +70,7 @@ export default function TemplateSharePanel({ businessId }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            mx: { xs: 'auto', sm: 0 },
           }}
         >
           {canDownloadQr ? (
@@ -85,7 +86,7 @@ export default function TemplateSharePanel({ businessId }) {
             <QRCodeSVG value={shareData.shortUrl} size={128} level="M" includeMargin />
           )}
         </Box>
-        <Stack spacing={1} sx={{ minWidth: 240, flex: 1 }}>
+        <Stack spacing={1} sx={{ minWidth: { xs: '100%', sm: 240 }, flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
             Short Link
           </Typography>
@@ -106,13 +107,19 @@ export default function TemplateSharePanel({ businessId }) {
               },
             }}
           />
-          <Stack direction="row" spacing={1}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <Button
               variant="contained"
               size="small"
               startIcon={copied ? <CheckIcon /> : <ContentCopyIcon />}
               onClick={handleCopy}
-              sx={{ borderRadius: 1, textTransform: 'none' }}
+              sx={{
+                borderRadius: 1,
+                textTransform: 'none',
+                width: { xs: '100%', sm: 'auto' },
+                minHeight: 42,
+                justifyContent: 'center',
+              }}
             >
               {copied ? 'Copied' : 'Copy Link'}
             </Button>
@@ -122,7 +129,13 @@ export default function TemplateSharePanel({ businessId }) {
               startIcon={<DownloadIcon />}
               onClick={handleDownloadQr}
               disabled={!canDownloadQr}
-              sx={{ borderRadius: 1, textTransform: 'none' }}
+              sx={{
+                borderRadius: 1,
+                textTransform: 'none',
+                width: { xs: '100%', sm: 'auto' },
+                minHeight: 42,
+                justifyContent: 'center',
+              }}
             >
               Download QR
             </Button>
@@ -131,7 +144,13 @@ export default function TemplateSharePanel({ businessId }) {
               size="small"
               startIcon={<OpenInNewIcon />}
               onClick={() => window.open(shareData.fullUrl, '_blank', 'noopener,noreferrer')}
-              sx={{ borderRadius: 1, textTransform: 'none' }}
+              sx={{
+                borderRadius: 1,
+                textTransform: 'none',
+                width: { xs: '100%', sm: 'auto' },
+                minHeight: 42,
+                justifyContent: 'center',
+              }}
             >
               Open Template Page
             </Button>

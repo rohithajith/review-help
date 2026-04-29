@@ -29,6 +29,8 @@ import {
   IconButton,
   Snackbar,
   Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -73,6 +75,8 @@ function normalizeUrl(raw) {
 }
 
 const AdminDashboard = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [authReady, setAuthReady] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [backupTemplates, setBackupTemplates] = useState([]);
@@ -465,7 +469,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ px: { xs: 1.25, sm: 2.5 }, py: { xs: 1, sm: 2 } }}>
+    <Container maxWidth="xl" sx={{ px: { xs: 1, sm: 2.5 }, py: { xs: 1, sm: 2 } }}>
       {/* Alert Snackbar */}
       <Snackbar
         open={!!alertMessage}
@@ -482,11 +486,11 @@ const AdminDashboard = () => {
         </Alert>
       </Snackbar>
 
-      <Typography variant="h4" component="h1" sx={{ mb: 4, fontWeight: 600 }}>
+      <Typography variant="h4" component="h1" sx={{ mb: { xs: 2.2, sm: 4 }, fontWeight: 600, fontSize: { xs: '1.6rem', sm: '2rem' } }}>
         Admin Dashboard
       </Typography>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 1.5, sm: 3 }}>
         <Grid item xs={12} md={6}>
           {/* Business Card */}
           <Card sx={{ mb: 3, borderRadius: 2, border: '1px solid rgba(215, 222, 234, 0.72)', boxShadow: '0 4px 12px rgba(41, 54, 67, 0.06)' }}>
@@ -561,12 +565,12 @@ const AdminDashboard = () => {
               </Box>
 
               <TableContainer component={Paper} sx={{ maxHeight: '48vh', overflowX: 'auto' }}>
-                <Table stickyHeader size="small">
+                <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 680 : 0, tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ width: 80 }}>Select</TableCell>
                       <TableCell>Template</TableCell>
-                      <TableCell sx={{ width: 160 }}>Actions</TableCell>
+                      <TableCell sx={{ width: isMobile ? 116 : 160 }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -578,9 +582,9 @@ const AdminDashboard = () => {
                             onChange={() => handleTemplateSelect(template.id)}
                           />
                         </TableCell>
-                        <TableCell>{template.text}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{template.text}</TableCell>
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
                             <Button
                               size="small"
                               variant="outlined"
@@ -629,19 +633,19 @@ const AdminDashboard = () => {
               </Box>
 
               <TableContainer component={Paper} sx={{ maxHeight: '48vh', overflowX: 'auto' }}>
-                <Table stickyHeader size="small">
+                <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 640 : 0, tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>Template</TableCell>
-                      <TableCell sx={{ width: 160 }}>Actions</TableCell>
+                      <TableCell sx={{ width: isMobile ? 116 : 160 }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {backupTemplates.map(template => (
                       <TableRow key={template.id} hover>
-                        <TableCell>{template.text}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{template.text}</TableCell>
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
                             <Button
                               size="small"
                               variant="outlined"
@@ -876,7 +880,7 @@ const AdminDashboard = () => {
 
               {selectedBusinessId && !reviewsLoading && reviews.length > 0 && (
                 <TableContainer component={Paper} sx={{ maxHeight: '40vh', overflowX: 'auto' }}>
-                  <Table stickyHeader size="small">
+                  <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 620 : 0, tableLayout: 'fixed' }}>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: 120 }}>Date</TableCell>
@@ -892,7 +896,7 @@ const AdminDashboard = () => {
                             {review.created_at ? new Date(review.created_at).toLocaleDateString() : '-'}
                           </TableCell>
                           <TableCell>{review.rating || '-'}</TableCell>
-                          <TableCell>{review.review_text || '-'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{review.review_text || '-'}</TableCell>
                           <TableCell>{review.template_id ? 'Template' : 'Own review'}</TableCell>
                         </TableRow>
                       ))}
